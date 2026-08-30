@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Fitu</string>
+    <string name="widget_description">Shows your daily step count and progress</string>
+</resources>
