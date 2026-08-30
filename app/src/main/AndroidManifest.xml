@@ -20,6 +20,9 @@
     <!-- Wake lock for accelerometer fallback -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Vibration for haptic feedback -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:name=".FituApplication"
         android:allowBackup="true"
