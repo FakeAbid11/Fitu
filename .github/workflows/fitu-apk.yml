@@ -1,5 +1,13 @@
 name: Fitu Build
+
+# Tests run on every push/PR and gate the build: if tests fail, the whole
+# workflow fails and no APK/AAB is built. The APK/AAB build only runs for
+# manual workflow_dispatch runs (with a build type selected).
 on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       build_type:
@@ -73,7 +81,7 @@ jobs:
     - name: Validate Gradle Wrapper
       uses: gradle/wrapper-validation-action@v2
 
-    - name: Run Unit Tests (quality gate)
+    - name: Run Unit Tests (quality gate - workflow fails if these fail)
       run: ./gradlew testDebugUnitTest --stacktrace
 
     - name: Run Lint (advisory)
@@ -132,7 +140,7 @@ jobs:
         echo "📦 Release APK and AAB built successfully"
 
     - name: Get Build Info
-      if: ${{ inputs.build_type != 'debug' }}
+      if: ${{ inputs.build_type == 'release' || inputs.build_type == 'release_aab' }}
       id: build_info
       run: |
         APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
