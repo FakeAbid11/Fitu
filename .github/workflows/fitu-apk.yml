@@ -1,24 +1,14 @@
 name: Fitu Build
 
 # Tests run on every push/PR and gate the build: if tests fail, the whole
-# workflow fails and no APK/AAB is built. The APK/AAB build only runs for
-# manual workflow_dispatch runs (with a build type selected).
+# workflow fails and no APK is built. The release APK build only runs for
+# manual workflow_dispatch runs.
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'What to build?'
-        required: true
-        default: 'release'
-        type: choice
-        options:
-          - release
-          - debug
-          - release_aab
 
 permissions:
   contents: write
@@ -29,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Show Build Type
+    - name: Show Run Info
       run: |
-        echo "🔨 Build type: ${{ inputs.build_type }}"
         echo "🏃 Run number: ${{ github.run_number }}"
+        echo "📦 Commit: ${{ github.sha }}"
 
     - name: Checkout Code
       uses: actions/checkout@v4
@@ -106,21 +96,15 @@ jobs:
         echo "📱 App Version: $VERSION_NAME ($VERSION_CODE)"
 
     - name: Decode Keystore
-      if: ${{ inputs.build_type == 'release' || inputs.build_type == 'release_aab' }}
+      if: github.event_name == 'workflow_dispatch'
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       run: |
         echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
         echo "✅ Keystore decoded successfully"
 
-    - name: Build Debug APK
-      if: ${{ inputs.build_type == 'debug' }}
-      run: |
-        ./gradlew assembleDebug --parallel --build-cache --stacktrace
-        echo "📦 Debug APK built successfully"
-
     - name: Build Release APK
-      if: ${{ inputs.build_type == 'release' }}
+      if: github.event_name == 'workflow_dispatch'
       env:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -129,42 +113,17 @@ jobs:
         ./gradlew assembleRelease --parallel --build-cache --stacktrace
         echo "📦 Release APK built successfully"
 
-    - name: Build Release APK + AAB
-      if: ${{ inputs.build_type == 'release_aab' }}
-      env:
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      run: |
-        ./gradlew assembleRelease bundleRelease --parallel --build-cache --stacktrace
-        echo "📦 Release APK and AAB built successfully"
-
     - name: Get Build Info
-      if: ${{ inputs.build_type == 'release' || inputs.build_type == 'release_aab' }}
+      if: github.event_name == 'workflow_dispatch'
       id: build_info
       run: |
         APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
         APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
         echo "apk_size=$APK_SIZE" >> $GITHUB_OUTPUT
         echo "build_date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
-        
-        if [ "${{ inputs.build_type }}" == "release_aab" ]; then
-          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
-          AAB_SIZE=$(du -h "$AAB_PATH" | cut -f1)
-          echo "aab_size=$AAB_SIZE" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Upload Debug APK
-      if: ${{ inputs.build_type == 'debug' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: Fitu-Debug-v${{ steps.version.outputs.version_name }}-${{ github.run_number }}
-        path: app/build/outputs/apk/debug/*.apk
-        retention-days: 1
-        if-no-files-found: error
 
     - name: Create Release and Upload APK
-      if: ${{ inputs.build_type == 'release' }}
+      if: github.event_name == 'workflow_dispatch'
       uses: ncipollo/release-action@v1
       with:
         tag: "v${{ steps.version.outputs.version_name }}-${{ github.run_number }}"
@@ -190,36 +149,6 @@ jobs:
         allowUpdates: true
         makeLatest: true
 
-    - name: Create Release and Upload AAB
-      if: ${{ inputs.build_type == 'release_aab' }}
-      uses: ncipollo/release-action@v1
-      with:
-        tag: "v${{ steps.version.outputs.version_name }}-${{ github.run_number }}-bundle"
-        name: "Fitu v${{ steps.version.outputs.version_name }} Bundle (Build ${{ github.run_number }})"
-        body: |
-          ## 📦 Fitu Bundle Build
-          
-          **Version:** ${{ steps.version.outputs.version_name }} (Code: ${{ steps.version.outputs.version_code }})
-          **Build Date:** ${{ steps.build_info.outputs.build_date }}
-          **APK Size:** ${{ steps.build_info.outputs.apk_size }}
-          **AAB Size:** ${{ steps.build_info.outputs.aab_size }}
-          **Build Number:** ${{ github.run_number }}
-          **Commit:** ${{ github.sha }}
-          
-          ### 📥 Downloads
-          - **APK:** For direct installation on Android devices
-          - **AAB:** For uploading to Google Play Store
-          
-          ### 🔧 Build Type
-          - Release APK (Signed)
-          - Release AAB (Signed - Play Store Ready)
-          
-          > **Play Store:** Use the AAB file for Play Store submissions
-        artifacts: "app/build/outputs/bundle/release/*.aab,app/build/outputs/apk/release/*.apk"
-        token: ${{ secrets.GITHUB_TOKEN }}
-        allowUpdates: true
-        makeLatest: true
-
     - name: Upload Room Schemas (for future migrations)
       if: always()
       uses: actions/upload-artifact@v4
@@ -240,7 +169,7 @@ jobs:
       run: |
         echo "## ✅ Build Successful!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Build Type:** ${{ inputs.build_type }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Build Type:** Release APK (Signed)" >> $GITHUB_STEP_SUMMARY
         echo "**Version:** ${{ steps.version.outputs.version_name }} (Code: ${{ steps.version.outputs.version_code }})" >> $GITHUB_STEP_SUMMARY
         echo "**Build Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
         echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
