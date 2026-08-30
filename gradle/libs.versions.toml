@@ -18,8 +18,6 @@ navigationCompose = "2.7.5"
 hiltNavigationCompose = "1.1.0"
 datastore = "1.0.0"
 securityCrypto = "1.1.0-alpha06"
-mockito = "5.2.1"
-coroutinesTest = "1.7.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -71,9 +69,6 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 # Security
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 
-# Testing
-mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
-kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
