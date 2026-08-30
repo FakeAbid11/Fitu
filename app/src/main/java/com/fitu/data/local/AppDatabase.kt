@@ -22,6 +22,10 @@ import com.fitu.data.local.entity.WorkoutPlanEntity
         WorkoutPlanEntity::class,
         FoodCacheEntity::class
     ],
+    // WARNING: There is NO migration path from any earlier version to 9
+    // (DatabaseMigrations.ALL_MIGRATIONS is empty). Upgrading an installed build of
+    // any version < 9 will crash at startup. Before shipping the first public UPDATE,
+    // add real migrations in DatabaseMigrations.kt. Fresh installs are unaffected.
     version = 9,
     exportSchema = true  // Changed from false - enables schema export for migration testing
 )

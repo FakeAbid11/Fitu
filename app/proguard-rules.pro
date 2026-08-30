@@ -44,14 +44,12 @@
 -keepclassmembernames class kotlinx.** { volatile <fields>; }
 
 # ========== Compose ==========
--keep class androidx.compose.** { *; }
+# NOTE: no blanket -keep for Compose; it ships its own consumer R8 rules
 -dontwarn androidx.compose.**
 
 # ========== App Entities ==========
 -keep class com.fitu.data.local.entity.** { *; }
 -keep class com.fitu.ui.nutrition.AnalyzedFood { *; }
--keep class com.fitu.ui.coach.ExerciseResult { *; }
--keep class com.fitu.ui.coach.FormFeedback { *; }
 
 # ========== Serialization ==========
 -keepattributes *Annotation*, InnerClasses

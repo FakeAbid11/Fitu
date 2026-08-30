@@ -24,8 +24,8 @@ class GeminiModelProvider @Inject constructor(
     companion object {
         private const val TAG = "GeminiModelProvider"
         
-        // Primary and fallback models
-        const val PRIMARY_MODEL = "gemini-3-flash-preview"
+        // Primary and fallback models (stable GA models; never ship a -preview model as primary)
+        const val PRIMARY_MODEL = "gemini-2.5-flash"
         const val FALLBACK_MODEL = "gemini-2.0-flash"
         
         // Retry configuration

@@ -128,8 +128,7 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // ML Kit
-    implementation(libs.mlkit.pose.detection)
+    // ML Kit (accurate model only; it bundles the pose API itself)
     implementation(libs.mlkit.pose.detection.accurate)
 
     // DataStore

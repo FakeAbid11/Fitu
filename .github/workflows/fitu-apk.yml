@@ -28,8 +28,6 @@ jobs:
 
     - name: Checkout Code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
     - name: Delete Old Artifacts
       uses: actions/github-script@v7
@@ -74,6 +72,13 @@ jobs:
 
     - name: Validate Gradle Wrapper
       uses: gradle/wrapper-validation-action@v2
+
+    - name: Run Unit Tests (quality gate)
+      run: ./gradlew testDebugUnitTest --stacktrace
+
+    - name: Run Lint (advisory)
+      continue-on-error: true
+      run: ./gradlew lintDebug --stacktrace
 
     - name: Get Version Name
       id: version
@@ -206,6 +211,15 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         allowUpdates: true
         makeLatest: true
+
+    - name: Upload Room Schemas (for future migrations)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: room-schemas-${{ github.run_number }}
+        path: app/schemas/
+        retention-days: 7
+        if-no-files-found: ignore
 
     - name: Cleanup
       if: always()

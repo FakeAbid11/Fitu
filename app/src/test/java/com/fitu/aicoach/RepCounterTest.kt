@@ -8,28 +8,55 @@ import org.junit.Test
 
 /**
  * Unit tests for RepCounter state machine logic.
- * Tests state transitions and rep counting for different exercises.
+ *
+ * The counter deliberately includes anti-phantom-rep protection:
+ *  1. angle smoothing (average of the last 5 frames)
+ *  2. frame debounce (a position must be held 3 consecutive frames)
+ *  3. minimum interval between counted reps (injected as 0 here for determinism)
+ *
+ * Because of smoothing + debounce, a steady position needs several identical
+ * frames to register (worst case ~7), so these tests feed each position for
+ * DEFAULT_FRAMES consecutive frames, like a real camera stream would.
  */
 class RepCounterTest {
+
+    companion object {
+        // 5 (smoothing window) + 3 (debounce) + margin
+        private const val DEFAULT_FRAMES = 10
+    }
 
     private lateinit var pushUpCounter: RepCounter
     private lateinit var curlCounter: RepCounter
 
     @Before
     fun setup() {
-        // Push-up: DOWN = angle < 90°, UP = angle > 160°
+        // Push-up: DOWN = angle < 90, UP = angle > 160
         pushUpCounter = RepCounter(
             downThreshold = 90f,
             upThreshold = 160f,
-            exerciseType = ExerciseType.PUSH_UP
+            exerciseType = ExerciseType.PUSH_UP,
+            minRepIntervalOverride = 0L
         )
 
-        // Curl: DOWN = angle > 160° (extended), UP = angle < 60° (curled)
+        // Curl: DOWN = angle > 160 (extended), UP = angle < 60 (curled)
         curlCounter = RepCounter(
             downThreshold = 160f,
             upThreshold = 60f,
-            exerciseType = ExerciseType.DUMBBELL_CURL
+            exerciseType = ExerciseType.DUMBBELL_CURL,
+            minRepIntervalOverride = 0L
         )
+    }
+
+    /** Feed the same angle for [frames] consecutive frames (simulates a steady camera view). */
+    private fun feed(counter: RepCounter, angle: Float, frames: Int = DEFAULT_FRAMES) {
+        repeat(frames) { counter.update(angle) }
+    }
+
+    /** Feed an angle for [frames] frames and report whether any rep was counted. */
+    private fun feedAndCount(counter: RepCounter, angle: Float, frames: Int = DEFAULT_FRAMES): Boolean {
+        var counted = false
+        repeat(frames) { if (counter.update(angle)) counted = true }
+        return counted
     }
 
     // ==================== PUSH-UP TESTS ====================
@@ -41,32 +68,32 @@ class RepCounterTest {
     }
 
     @Test
-    fun `pushup - transitions to UP when angle above upThreshold`() {
-        // Start with extended arms (angle > 160°)
+    fun `pushup - single frame is not enough to change state (debounce)`() {
         pushUpCounter.update(170f)
+        assertEquals(RepCounter.State.UNKNOWN, pushUpCounter.currentState)
+    }
+
+    @Test
+    fun `pushup - transitions to UP when angle above upThreshold`() {
+        feed(pushUpCounter, 170f)
         assertEquals(RepCounter.State.UP, pushUpCounter.currentState)
         assertEquals(0, pushUpCounter.repCount)
     }
 
     @Test
     fun `pushup - transitions to DOWN when angle below downThreshold`() {
-        // Start UP
-        pushUpCounter.update(170f)
-        // Go DOWN (bend arms)
-        pushUpCounter.update(80f)
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 80f)
         assertEquals(RepCounter.State.DOWN, pushUpCounter.currentState)
         assertEquals(0, pushUpCounter.repCount)
     }
 
     @Test
     fun `pushup - counts rep when completing full cycle UP-DOWN-UP`() {
-        // Start UP
-        pushUpCounter.update(170f)
-        // Go DOWN
-        pushUpCounter.update(80f)
-        // Return UP - should count rep
-        val counted = pushUpCounter.update(165f)
-        
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 80f)
+        val counted = feedAndCount(pushUpCounter, 165f)
+
         assertTrue(counted)
         assertEquals(RepCounter.State.UP, pushUpCounter.currentState)
         assertEquals(1, pushUpCounter.repCount)
@@ -74,55 +101,42 @@ class RepCounterTest {
 
     @Test
     fun `pushup - does not count rep on partial movement`() {
-        // Start UP
-        pushUpCounter.update(170f)
-        // Go only halfway down (above threshold)
-        pushUpCounter.update(100f)
-        // Return UP
-        val counted = pushUpCounter.update(165f)
-        
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 100f)   // halfway down (dead zone)
+        val counted = feedAndCount(pushUpCounter, 165f)
+
         assertFalse(counted)
         assertEquals(0, pushUpCounter.repCount)
     }
 
     @Test
     fun `pushup - counts multiple reps correctly`() {
-        // Rep 1
-        pushUpCounter.update(170f)  // UP
-        pushUpCounter.update(80f)   // DOWN
-        pushUpCounter.update(165f)  // UP - rep 1
-        
-        // Rep 2
-        pushUpCounter.update(80f)   // DOWN
-        pushUpCounter.update(165f)  // UP - rep 2
-        
-        // Rep 3
-        pushUpCounter.update(75f)   // DOWN
-        pushUpCounter.update(170f)  // UP - rep 3
-        
+        repeat(3) {
+            feed(pushUpCounter, 170f)
+            feed(pushUpCounter, 80f)
+            feedAndCount(pushUpCounter, 170f)
+        }
         assertEquals(3, pushUpCounter.repCount)
     }
 
     @Test
     fun `pushup - ignores invalid angles`() {
-        pushUpCounter.update(170f)
-        pushUpCounter.update(80f)
-        
-        // Invalid angle should not change state
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 80f)    // now DOWN
         val counted = pushUpCounter.update(-1f)
-        
+
         assertFalse(counted)
         assertEquals(RepCounter.State.DOWN, pushUpCounter.currentState)
     }
 
     @Test
     fun `pushup - reset clears state and count`() {
-        pushUpCounter.update(170f)
-        pushUpCounter.update(80f)
-        pushUpCounter.update(165f)
-        
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 80f)
+        feedAndCount(pushUpCounter, 165f)
+
         pushUpCounter.reset()
-        
+
         assertEquals(RepCounter.State.UNKNOWN, pushUpCounter.currentState)
         assertEquals(0, pushUpCounter.repCount)
     }
@@ -131,36 +145,44 @@ class RepCounterTest {
 
     @Test
     fun `curl - transitions to DOWN when angle above downThreshold (arm extended)`() {
-        // Extended arm (start position for curl)
-        curlCounter.update(170f)
+        feed(curlCounter, 170f)
         assertEquals(RepCounter.State.DOWN, curlCounter.currentState)
     }
 
     @Test
     fun `curl - transitions to UP when angle below upThreshold (arm curled)`() {
-        curlCounter.update(170f)  // Extended (DOWN)
-        curlCounter.update(50f)   // Curled (UP)
+        feed(curlCounter, 170f)
+        feed(curlCounter, 50f)
         assertEquals(RepCounter.State.UP, curlCounter.currentState)
     }
 
     @Test
     fun `curl - counts rep when completing cycle DOWN-UP-DOWN`() {
-        curlCounter.update(170f)  // Start extended
-        curlCounter.update(50f)   // Curl up
-        val counted = curlCounter.update(165f)  // Extend again - rep counted
-        
+        feed(curlCounter, 170f)
+        feed(curlCounter, 50f)
+        val counted = feedAndCount(curlCounter, 165f)
+
         assertTrue(counted)
         assertEquals(1, curlCounter.repCount)
     }
 
     @Test
+    fun `curl - single update does not count rep`() {
+        feed(curlCounter, 170f)
+        feed(curlCounter, 50f)
+        val counted = curlCounter.update(165f)
+
+        assertFalse(counted)
+    }
+
+    @Test
     fun `curl - getStateDisplay returns correct strings`() {
         assertEquals("Ready", curlCounter.getStateDisplay())
-        
-        curlCounter.update(170f)
+
+        feed(curlCounter, 170f)
         assertEquals("Down", curlCounter.getStateDisplay())
-        
-        curlCounter.update(50f)
+
+        feed(curlCounter, 50f)
         assertEquals("Up", curlCounter.getStateDisplay())
     }
 }

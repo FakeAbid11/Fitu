@@ -63,7 +63,6 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camera" }
 
 # ML Kit
-mlkit-pose-detection = { group = "com.google.mlkit", name = "pose-detection", version.ref = "mlkitPose" }
 mlkit-pose-detection-accurate = { group = "com.google.mlkit", name = "pose-detection-accurate", version.ref = "mlkitPose" }
 
 # DataStore

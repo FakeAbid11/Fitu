@@ -14,7 +14,8 @@ package com.fitu.aicoach
 class RepCounter(
     private val downThreshold: Float,
     private val upThreshold: Float,
-    private val exerciseType: ExerciseType
+    private val exerciseType: ExerciseType,
+    private val minRepIntervalOverride: Long? = null
 ) {
     companion object {
         // Anti-jitter configuration
@@ -66,7 +67,7 @@ class RepCounter(
     private var lastRepTimeMs: Long = 0L
     
     // ✅ FIX #4: Store the min interval for this exercise
-    private val minRepIntervalMs: Long = getMinRepInterval(exerciseType)
+    private val minRepIntervalMs: Long = minRepIntervalOverride ?: getMinRepInterval(exerciseType)
 
     val repCount: Int get() = _repCount
     val currentState: State get() = state

@@ -51,27 +51,27 @@ class AngleMathTest {
     }
 
     @Test
-    fun `calculateAngle returns 45 degrees for 45 degree angle`() {
-        // 45 degree angle
+    fun `calculateAngle returns 135 degrees for obtuse configuration`() {
+        // Rays at 180 deg and 45 deg from vertex (1,0) -> interior angle 135 deg
         val angle = AngleMath.calculateAngle(
             firstX = 0f, firstY = 0f,
             midX = 1f, midY = 0f,
             lastX = 2f, lastY = 1f
         )
         
-        assertEquals(45f, angle, DELTA)
+        assertEquals(135f, angle, DELTA)
     }
 
     @Test
-    fun `calculateAngle returns 135 degrees for obtuse angle`() {
-        // 135 degree angle
+    fun `calculateAngle returns 45 degrees for acute configuration`() {
+        // Rays at 225 deg and 180 deg from vertex (1,1) -> interior angle 45 deg
         val angle = AngleMath.calculateAngle(
             firstX = 0f, firstY = 0f,
-            midX = 1f, midY = 0f,
+            midX = 1f, midY = 1f,
             lastX = 0f, lastY = 1f
         )
         
-        assertEquals(135f, angle, DELTA)
+        assertEquals(45f, angle, DELTA)
     }
 
     @Test
