@@ -413,7 +413,7 @@ fun ApiSetupPage(viewModel: OnboardingViewModel, onComplete: () -> Unit) {
     val context = LocalContext.current
 
     // Check if key format is valid for enabling button
-    val isKeyFormatValid = apiKey.trim().let { it.length >= 20 && it.startsWith("AIza") }
+    val isKeyFormatValid = com.fitu.util.ApiKeyValidator.isValid(apiKey)
 
     Column(
         modifier = Modifier
@@ -543,7 +543,7 @@ fun ApiSetupPage(viewModel: OnboardingViewModel, onComplete: () -> Unit) {
             )
         } else {
             Text(
-                text = "Key should start with 'AIza' and be at least 20 characters",
+                text = "Key must be at least 20 characters - AIza... and new key formats are supported",
                 color = Color.White.copy(alpha = 0.4f),
                 fontSize = 12.sp
             )

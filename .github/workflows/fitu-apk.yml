@@ -1,14 +1,21 @@
 name: Fitu Build
 
-# Tests run on every push/PR and gate the build: if tests fail, the whole
-# workflow fails and no APK is built. The release APK build only runs for
-# manual workflow_dispatch runs.
+# Manual build workflow: unit tests run first and gate the build.
+# If tests fail, the whole workflow fails and no APK is built.
+# Optionally override the app version via the workflow inputs.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      app_version:
+        description: 'App version to set, e.g. 2.5.0 (leave empty = keep current)'
+        required: false
+        default: ''
+        type: string
+      version_code:
+        description: 'Version code (leave empty = auto-use the build number)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -70,6 +77,29 @@ jobs:
 
     - name: Validate Gradle Wrapper
       uses: gradle/wrapper-validation-action@v2
+
+    - name: Set App Version (optional override)
+      env:
+        APP_VERSION: ${{ inputs.app_version }}
+        NEW_VERSION_CODE: ${{ inputs.version_code }}
+      run: |
+        if [ -z "$APP_VERSION" ]; then
+          echo "No version override provided - keeping the version from build.gradle.kts"
+          exit 0
+        fi
+        if ! echo "$APP_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "::error::Invalid version '$APP_VERSION' - use format like 2.5.0"
+          exit 1
+        fi
+        CODE="${NEW_VERSION_CODE:-$GITHUB_RUN_NUMBER}"
+        if ! echo "$CODE" | grep -qE '^[0-9]+$'; then
+          echo "::error::Invalid version code '$CODE' - numbers only"
+          exit 1
+        fi
+        sed -i "s/versionName = \".*\"/versionName = \"$APP_VERSION\"/" app/build.gradle.kts
+        sed -i "s/versionCode = [0-9]*/versionCode = $CODE/" app/build.gradle.kts
+        echo "App version set to $APP_VERSION (code: $CODE)"
+        grep -nE 'versionName|versionCode' app/build.gradle.kts
 
     - name: Run Unit Tests (quality gate - workflow fails if these fail)
       run: ./gradlew testDebugUnitTest --stacktrace

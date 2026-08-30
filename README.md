@@ -7,7 +7,6 @@ AI nutrition analysis, automatic step tracking and workout planning - all built
 with modern Android development practices.
 
 ![Build](https://github.com/FakeAbid11/Fitu/actions/workflows/fitu-apk.yml/badge.svg)
-![Tests](https://github.com/FakeAbid11/Fitu/actions/workflows/tests.yml/badge.svg)
 
 ## Features
 
@@ -67,15 +66,15 @@ Open the project in Android Studio and press Run, or from the command line:
 ```
 
 Unit tests cover the rep-counting state machine, plank tracking and angle math.
-Tests also run automatically on every push to `main` (see `.github/workflows/tests.yml`).
+Tests run inside the Fitu Build workflow before every release build.
 
 ## Building Releases in the Cloud (no high-end PC needed)
 
 This project is configured to build fully on GitHub Actions:
 
 1. Go to **Actions -> Fitu Build -> Run workflow**
-2. Choose the build type: `release`, `debug` or `release_aab`
-3. A signed APK / AAB is built and attached to a GitHub Release
+2. (Optional) Set `app_version` (e.g. `2.5.0`) and `version_code` - or leave empty
+3. Tests run first, then a signed APK is built and attached to a GitHub Release
 
 Required repository secrets (Settings -> Secrets and variables -> Actions):
 

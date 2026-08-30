@@ -747,7 +747,7 @@ private fun ApiKeyDialog(
     var editKey by remember { mutableStateOf(currentKey) }
     var showKey by remember { mutableStateOf(false) }
 
-    val isFormatValid = editKey.trim().let { it.length >= 20 && it.startsWith("AIza") }
+    val isFormatValid = com.fitu.util.ApiKeyValidator.isValid(editKey)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -815,7 +815,7 @@ private fun ApiKeyDialog(
                     Text("✓ Format looks good!", color = SuccessGreen, fontSize = 13.sp)
                 } else {
                     Text(
-                        "Key should start with 'AIza' and be 20+ characters",
+                        "Key must be at least 20 characters - AIza... and new key formats are supported",
                         color = Color.White.copy(alpha = 0.4f),
                         fontSize = 12.sp
                     )

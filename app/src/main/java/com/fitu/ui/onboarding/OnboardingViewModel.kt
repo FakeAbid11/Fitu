@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fitu.data.local.SecureStorage
 import com.fitu.data.local.UserPreferencesRepository
+import com.fitu.util.ApiKeyValidator
 import com.fitu.util.BirthdayUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -235,7 +236,7 @@ class OnboardingViewModel @Inject constructor(
 
     /**
      * Simple API key format validation - NO API call
-     * Just checks if key starts with "AIza" and is longer than 20 characters
+     * Accepts classic "AIza..." keys and the newer Google AI key formats
      */
     fun validateApiKeyFormat(): Boolean {
         val key = _apiKey.value.trim()
@@ -249,8 +250,8 @@ class OnboardingViewModel @Inject constructor(
                 _apiKeyError.value = "API key is too short"
                 return false
             }
-            !key.startsWith("AIza") -> {
-                _apiKeyError.value = "Invalid API key format. Google AI keys start with 'AIza'"
+            !ApiKeyValidator.isValid(key) -> {
+                _apiKeyError.value = "Invalid API key format. Check for typos or extra spaces"
                 return false
             }
         }

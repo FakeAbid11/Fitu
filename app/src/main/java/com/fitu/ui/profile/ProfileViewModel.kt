@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.fitu.data.local.SecureStorage
 import com.fitu.data.local.UserPreferencesRepository
 import com.fitu.domain.repository.BackupRepository
+import com.fitu.util.ApiKeyValidator
 import com.fitu.util.BirthdayUtils
 import com.fitu.util.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -305,8 +306,8 @@ class ProfileViewModel @Inject constructor(
                 _apiKeyError.value = "API key is too short"
                 return
             }
-            !key.startsWith("AIza") -> {
-                _apiKeyError.value = "Invalid format. Google AI keys start with 'AIza'"
+            !ApiKeyValidator.isValid(key) -> {
+                _apiKeyError.value = "Invalid API key format. Check for typos or extra spaces"
                 return
             }
         }
