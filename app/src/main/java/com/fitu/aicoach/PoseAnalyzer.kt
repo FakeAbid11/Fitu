@@ -246,6 +246,7 @@ class PoseAnalyzer(
 
         // Update appropriate tracker
         val feedback: String
+        var isRepEvent = false
         if (exerciseConfig.exerciseType.isTimeBased) {
             // Time-based exercise (Plank)
             plankTracker.update(angle, System.currentTimeMillis())
@@ -253,11 +254,19 @@ class PoseAnalyzer(
         } else {
             // Rep-based exercise
             val counted = repCounter.update(angle)
+            isRepEvent = counted
             feedback = if (counted) {
                 "${repCounter.repCount}! 🔥"
             } else {
                 repCounter.getStateDisplay()
             }
+        }
+
+        // Skeleton color state: holding the plank maps to the working-position color
+        val repState = if (exerciseConfig.exerciseType.isTimeBased) {
+            if (plankTracker.isHolding) RepCounter.State.DOWN else RepCounter.State.UNKNOWN
+        } else {
+            repCounter.currentState
         }
 
         // Update overlay with pose (pixel space, upright frame)
@@ -276,7 +285,9 @@ class PoseAnalyzer(
             repCount = repCounter.repCount,
             holdTimeMs = plankTracker.currentHoldTimeMs,
             formScore = plankTracker.formScore,
-            feedback = feedback
+            feedback = feedback,
+            state = repState,
+            isRepEvent = isRepEvent
         )
 
         // Callback with results
@@ -315,7 +326,9 @@ class PoseAnalyzer(
             repCount = repCounter.repCount,
             holdTimeMs = plankTracker.currentHoldTimeMs,
             formScore = plankTracker.formScore,
-            feedback = hint
+            feedback = hint,
+            state = RepCounter.State.UNKNOWN,
+            isRepEvent = false
         )
         onPoseDetected(pixelPose, -1f, exerciseConfig)
     }

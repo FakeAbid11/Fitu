@@ -1,30 +1,50 @@
 package com.fitu.aicoach
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 
 /**
  * Custom View that draws pose skeleton overlay on top of camera preview.
  *
- * Handles:
- * - Coordinate mapping from pixel space to view space
- * - Front camera mirroring
- * - Skeleton drawing with joints and connections
- * - Exercise information display (feedback text)
+ * Rendering features:
+ *  - Exponential smoothing of joint positions (no shivering; see SkeletonSmoother)
+ *  - Visibility-aware: joints AND bones are skipped for weak detections
+ *  - Complete skeleton including feet and hands, subtle left/right tint
+ *  - Density-scaled strokes, radii and text (dp, not raw px)
+ *  - State-colored skeleton: orange (extended), green (working position),
+ *    red (bad position / no reliable angle), white (neutral)
+ *  - Pulse animation on each counted rep
+ *  - Angle drawn on a readable translucent badge
+ *  - Joint size subtly modulated by landmark depth (z)
  *
  * The pose arrives already rotation-corrected in upright pixel space
- * (see PoseAnalyzer), so no rotation handling is needed here.
+ * (see PoseAnalyzer), so only front-camera mirroring is handled here.
  */
 class PoseOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr), PoseOverlay {
+
+    private val density = resources.displayMetrics.density
+    private fun dp(value: Float): Float = value * density
+
+    // State colors
+    private val colorNeutral = Color.WHITE
+    private val colorWorking = Color.parseColor("#4CAF50")   // green: in the working position
+    private val colorExtended = Color.parseColor("#FF6B00")  // orange: extended / ready
+    private val colorInvalid = Color.parseColor("#FF5252")   // red: bad position / no angle
+
+    // Per-side bone tints
+    private val colorLeftBones = Color.parseColor("#BFD7FF")
+    private val colorRightBones = Color.parseColor("#FFD9B3")
 
     // Current pose data
     private var currentPose: CoachPose? = null
@@ -39,10 +59,18 @@ class PoseOverlayView @JvmOverloads constructor(
     private var currentHoldTimeMs: Long = 0L
     private var currentFormScore: Float = 0f
     private var currentFeedback: String = ""
+    private var currentBodyColor: Int = colorNeutral
 
-    // Paints
+    // Rep pulse animation
+    private var pulseProgress = 0f
+    private var pulseAnimator: ValueAnimator? = null
+
+    // Display-side smoothing (counting logic uses its own median smoothing)
+    private val smoother = SkeletonSmoother()
+
+    // Paints (density-scaled)
     private val jointPaint = Paint().apply {
-        color = Color.parseColor("#FF6B00") // Orange
+        color = colorExtended
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -50,39 +78,58 @@ class PoseOverlayView @JvmOverloads constructor(
     private val bonePaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 8f
+        strokeWidth = dp(3f)
         isAntiAlias = true
     }
 
     private val highlightBonePaint = Paint().apply {
-        color = Color.parseColor("#FF6B00") // Orange for tracked limbs
+        color = colorExtended
         style = Paint.Style.STROKE
-        strokeWidth = 12f
+        strokeWidth = dp(4.5f)
+        isAntiAlias = true
+    }
+
+    private val leftBonePaint = Paint().apply {
+        color = colorLeftBones
+        style = Paint.Style.STROKE
+        strokeWidth = dp(3f)
+        isAntiAlias = true
+    }
+
+    private val rightBonePaint = Paint().apply {
+        color = colorRightBones
+        style = Paint.Style.STROKE
+        strokeWidth = dp(3f)
         isAntiAlias = true
     }
 
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 48f
+        textSize = dp(16f)
         textAlign = Paint.Align.CENTER
         isAntiAlias = true
-        setShadowLayer(4f, 2f, 2f, Color.BLACK)
+        setShadowLayer(dp(2f), dp(1f), dp(1f), Color.BLACK)
     }
 
     private val angleTextPaint = Paint().apply {
-        color = Color.parseColor("#FF6B00")
-        textSize = 36f
+        color = Color.WHITE
+        textSize = dp(13f)
         textAlign = Paint.Align.CENTER
         isAntiAlias = true
-        setShadowLayer(4f, 2f, 2f, Color.BLACK)
+    }
+
+    private val angleBadgePaint = Paint().apply {
+        color = Color.argb(150, 0, 0, 0)
+        style = Paint.Style.FILL
+        isAntiAlias = true
     }
 
     private val feedbackPaint = Paint().apply {
         color = Color.GREEN
-        textSize = 64f
+        textSize = dp(22f)
         textAlign = Paint.Align.CENTER
         isAntiAlias = true
-        setShadowLayer(6f, 3f, 3f, Color.BLACK)
+        setShadowLayer(dp(3f), dp(1.5f), dp(1.5f), Color.BLACK)
     }
 
     // Skeleton connections (pairs of landmark indices)
@@ -109,7 +156,33 @@ class PoseOverlayView @JvmOverloads constructor(
         Pair(LandmarkIndex.LEFT_HIP, LandmarkIndex.LEFT_KNEE),
         Pair(LandmarkIndex.LEFT_KNEE, LandmarkIndex.LEFT_ANKLE),
         Pair(LandmarkIndex.RIGHT_HIP, LandmarkIndex.RIGHT_KNEE),
-        Pair(LandmarkIndex.RIGHT_KNEE, LandmarkIndex.RIGHT_ANKLE)
+        Pair(LandmarkIndex.RIGHT_KNEE, LandmarkIndex.RIGHT_ANKLE),
+
+        // Feet (previously missing)
+        Pair(LandmarkIndex.LEFT_ANKLE, LandmarkIndex.LEFT_HEEL),
+        Pair(LandmarkIndex.LEFT_HEEL, LandmarkIndex.LEFT_FOOT_INDEX),
+        Pair(LandmarkIndex.RIGHT_ANKLE, LandmarkIndex.RIGHT_HEEL),
+        Pair(LandmarkIndex.RIGHT_HEEL, LandmarkIndex.RIGHT_FOOT_INDEX),
+
+        // Hands (previously missing)
+        Pair(LandmarkIndex.LEFT_WRIST, LandmarkIndex.LEFT_PINKY),
+        Pair(LandmarkIndex.LEFT_WRIST, LandmarkIndex.LEFT_INDEX),
+        Pair(LandmarkIndex.RIGHT_WRIST, LandmarkIndex.RIGHT_PINKY),
+        Pair(LandmarkIndex.RIGHT_WRIST, LandmarkIndex.RIGHT_INDEX)
+    )
+
+    private val leftSideIndices = setOf(
+        LandmarkIndex.LEFT_SHOULDER, LandmarkIndex.LEFT_ELBOW, LandmarkIndex.LEFT_WRIST,
+        LandmarkIndex.LEFT_PINKY, LandmarkIndex.LEFT_INDEX, LandmarkIndex.LEFT_THUMB,
+        LandmarkIndex.LEFT_HIP, LandmarkIndex.LEFT_KNEE, LandmarkIndex.LEFT_ANKLE,
+        LandmarkIndex.LEFT_HEEL, LandmarkIndex.LEFT_FOOT_INDEX
+    )
+
+    private val rightSideIndices = setOf(
+        LandmarkIndex.RIGHT_SHOULDER, LandmarkIndex.RIGHT_ELBOW, LandmarkIndex.RIGHT_WRIST,
+        LandmarkIndex.RIGHT_PINKY, LandmarkIndex.RIGHT_INDEX, LandmarkIndex.RIGHT_THUMB,
+        LandmarkIndex.RIGHT_HIP, LandmarkIndex.RIGHT_KNEE, LandmarkIndex.RIGHT_ANKLE,
+        LandmarkIndex.RIGHT_HEEL, LandmarkIndex.RIGHT_FOOT_INDEX
     )
 
     override fun updatePose(
@@ -119,12 +192,12 @@ class PoseOverlayView @JvmOverloads constructor(
         rotationDegrees: Int,
         isFrontCamera: Boolean
     ) {
-        this.currentPose = pose
         this.imageWidth = imageWidth
         this.imageHeight = imageHeight
         this.isFrontCamera = isFrontCamera
-
-        // Request redraw on UI thread
+        this.currentPose = if (pose == null) null else {
+            pose.copy(landmarks = smoother.smooth(pose.landmarks))
+        }
         postInvalidate()
     }
 
@@ -134,7 +207,9 @@ class PoseOverlayView @JvmOverloads constructor(
         repCount: Int,
         holdTimeMs: Long,
         formScore: Float,
-        feedback: String
+        feedback: String,
+        state: RepCounter.State,
+        isRepEvent: Boolean
     ) {
         this.currentExerciseType = exerciseType
         this.currentAngle = angle
@@ -143,12 +218,43 @@ class PoseOverlayView @JvmOverloads constructor(
         this.currentFormScore = formScore
         this.currentFeedback = feedback
 
+        this.currentBodyColor = if (angle < 0f) {
+            colorInvalid
+        } else if (state == RepCounter.State.DOWN) {
+            colorWorking
+        } else if (state == RepCounter.State.UP) {
+            colorExtended
+        } else {
+            colorNeutral
+        }
+
+        if (isRepEvent) startPulse()
         postInvalidate()
     }
 
     override fun clear() {
         currentPose = null
+        smoother.reset()
         postInvalidate()
+    }
+
+    private fun startPulse() {
+        pulseAnimator?.cancel()
+        val animator = ValueAnimator.ofFloat(1f, 0f)
+        animator.duration = 450
+        animator.addUpdateListener(object : ValueAnimator.AnimatorUpdateListener {
+            override fun onAnimationUpdate(animation: ValueAnimator) {
+                pulseProgress = animation.animatedValue as Float
+                postInvalidate()
+            }
+        })
+        animator.start()
+        pulseAnimator = animator
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        pulseAnimator?.cancel()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -163,130 +269,117 @@ class PoseOverlayView @JvmOverloads constructor(
         drawExerciseInfo(canvas)
     }
 
-    /**
-     * Draw the skeleton (joints and bones)
-     */
     private fun drawSkeleton(canvas: Canvas, pose: CoachPose) {
-        // Get the config for current exercise to highlight relevant bones
         val config = ExerciseConfig.forExercise(currentExerciseType)
-        val highlightedLandmarks = setOf(
+        val highlighted = setOf(
             config.landmarks.first,
             config.landmarks.second,
             config.landmarks.third
         )
 
-        // Draw bones (connections)
+        jointPaint.color = currentBodyColor
+        highlightBonePaint.color = currentBodyColor
+
+        // Bones (visibility-aware: skip weak detections)
         for (connection in skeletonConnections) {
-            val startLandmark = pose.landmark(connection.first)
-            val endLandmark = pose.landmark(connection.second)
+            val start = pose.landmark(connection.first)
+            val end = pose.landmark(connection.second)
+            if (start == null || end == null) continue
+            if (start.visibility < 0.5f || end.visibility < 0.5f) continue
 
-            if (startLandmark != null && endLandmark != null) {
-                val startPoint = translatePoint(startLandmark.x, startLandmark.y)
-                val endPoint = translatePoint(endLandmark.x, endLandmark.y)
+            val startPoint = translatePoint(start.x, start.y)
+            val endPoint = translatePoint(end.x, end.y)
 
-                // Use highlight paint for tracked limbs
-                val isHighlighted = connection.first in highlightedLandmarks &&
-                                    connection.second in highlightedLandmarks
-                val paint = if (isHighlighted) highlightBonePaint else bonePaint
-
-                canvas.drawLine(
-                    startPoint.x, startPoint.y,
-                    endPoint.x, endPoint.y,
-                    paint
-                )
+            val paint = if (connection.first in highlighted && connection.second in highlighted) {
+                highlightBonePaint
+            } else if (connection.first in leftSideIndices) {
+                leftBonePaint
+            } else if (connection.first in rightSideIndices) {
+                rightBonePaint
+            } else {
+                bonePaint
             }
+
+            canvas.drawLine(
+                startPoint.x, startPoint.y,
+                endPoint.x, endPoint.y,
+                paint
+            )
         }
 
-        // Draw joints
+        // Joints (depth-modulated radius)
         for (i in pose.landmarks.indices) {
             val landmark = pose.landmarks[i]
-            if (0.5f < landmark.visibility) {
-                val point = translatePoint(landmark.x, landmark.y)
-
-                // Larger joint for tracked landmarks
-                val isTracked = i in highlightedLandmarks
-                val radius = if (isTracked) 16f else 10f
-
-                canvas.drawCircle(point.x, point.y, radius, jointPaint)
-            }
+            if (landmark.visibility < 0.5f) continue
+            val point = translatePoint(landmark.x, landmark.y)
+            val base = if (i in highlighted) dp(6f) else dp(4f)
+            val depthFactor = (1f - landmark.z * 0.15f).coerceIn(0.75f, 1.25f)
+            canvas.drawCircle(point.x, point.y, base * depthFactor, jointPaint)
         }
 
-        // Draw angle at the mid joint
+        // Angle badge at the tracked joint
         val midLandmark = pose.landmark(config.landmarks.second)
         if (midLandmark != null && 0 < currentAngle) {
-            val point = translatePoint(midLandmark.x, midLandmark.y)
-            canvas.drawText(
-                "${currentAngle.toInt()}deg",
-                point.x,
-                point.y - 30f,
-                angleTextPaint
-            )
+            drawAngleBadge(canvas, midLandmark)
         }
     }
 
-    /**
-     * Draw exercise information (reps, timer, feedback)
-     */
+    private fun drawAngleBadge(canvas: Canvas, mid: CoachLandmark) {
+        val text = "${currentAngle.toInt()}deg"
+        val point = translatePoint(mid.x, mid.y)
+        val textWidth = angleTextPaint.measureText(text)
+        val baseline = point.y - dp(18f)
+        val pad = dp(6f)
+        val badge = RectF(
+            point.x - textWidth / 2f - pad,
+            baseline + angleTextPaint.fontMetrics.ascent - pad,
+            point.x + textWidth / 2f + pad,
+            baseline + angleTextPaint.fontMetrics.descent + pad
+        )
+        canvas.drawRoundRect(badge, dp(8f), dp(8f), angleBadgePaint)
+        canvas.drawText(text, point.x, baseline, angleTextPaint)
+    }
+
     private fun drawExerciseInfo(canvas: Canvas) {
         val centerX = width / 2f
 
-        // Draw exercise name at top
         canvas.drawText(
             "${currentExerciseType.emoji} ${currentExerciseType.displayName}",
             centerX,
-            80f,
+            dp(28f),
             textPaint
         )
 
-        // Draw stats based on exercise type - handled by Composable StatsOverlay
-        // We only draw the FEEDBACK (Up/Down/Good/Warn) here
-
-        // Draw feedback higher up to avoid overlapping with the bottom stats card
+        // Feedback with a brief scale/brighten pulse on each counted rep
         if (currentFeedback.isNotEmpty()) {
+            feedbackPaint.textSize = dp(22f) * (1f + 0.35f * pulseProgress)
+            feedbackPaint.alpha = (200f + 55f * pulseProgress).toInt().coerceIn(0, 255)
             canvas.drawText(
                 currentFeedback,
                 centerX,
-                height - 300f,
+                height - dp(110f),
                 feedbackPaint
             )
         }
     }
 
-    /**
-     * Translate a point from pixel coordinates to view coordinates.
-     *
-     * For front camera with FILL_CENTER PreviewView:
-     * 1. The preview is mirrored horizontally by PreviewView
-     * 2. We need to match that mirroring in our overlay
-     * 3. Scale to fill the view while maintaining aspect ratio
-     */
     private fun translatePoint(x: Float, y: Float): PointF {
         var mappedX = x
         var mappedY = y
 
-        // For front camera: mirror horizontally to match PreviewView
-        // PreviewView shows a mirrored image, so we need to flip X
         if (isFrontCamera) {
             mappedX = imageWidth - mappedX
         }
 
-        // Calculate scale to fill the view (FILL_CENTER behavior)
         val scaleX = width.toFloat() / imageWidth.toFloat()
         val scaleY = height.toFloat() / imageHeight.toFloat()
-        val scale = maxOf(scaleX, scaleY)  // Use max for FILL (crop if needed)
+        val scale = maxOf(scaleX, scaleY)  // FILL (crop if needed)
 
-        // Calculate the scaled dimensions
         val scaledWidth = imageWidth * scale
         val scaledHeight = imageHeight * scale
-
-        // Calculate offset to center the scaled image
         val offsetX = (width - scaledWidth) / 2f
         val offsetY = (height - scaledHeight) / 2f
 
-        // Apply scale and offset
-        val finalX = mappedX * scale + offsetX
-        val finalY = mappedY * scale + offsetY
-
-        return PointF(finalX, finalY)
+        return PointF(mappedX * scale + offsetX, mappedY * scale + offsetY)
     }
 }

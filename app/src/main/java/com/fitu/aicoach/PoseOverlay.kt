@@ -34,6 +34,9 @@ interface PoseOverlay {
      * @param holdTimeMs Current hold time in milliseconds (for time-based exercises)
      * @param formScore Form score 0-10 (for time-based exercises)
      * @param feedback Feedback text to display
+     * @param state Current rep state (drives the state-colored skeleton;
+     *        for plank, holding maps to DOWN = working position)
+     * @param isRepEvent True when a rep was counted this frame (drives the pulse animation)
      */
     fun updateExerciseInfo(
         exerciseType: ExerciseType,
@@ -41,7 +44,9 @@ interface PoseOverlay {
         repCount: Int,
         holdTimeMs: Long,
         formScore: Float,
-        feedback: String
+        feedback: String,
+        state: RepCounter.State = RepCounter.State.UNKNOWN,
+        isRepEvent: Boolean = false
     )
 
     /**
