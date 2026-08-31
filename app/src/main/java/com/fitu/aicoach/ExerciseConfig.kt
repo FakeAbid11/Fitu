@@ -19,7 +19,10 @@ data class ExerciseConfig(
     val angleName: String,
     val downThreshold: Float,
     val upThreshold: Float,
-    val useLeftSide: Boolean = true
+    val useLeftSide: Boolean = true,
+    /** Optional body-position gate: segment that must be roughly horizontal. */
+    val gateSegment: Pair<Int, Int>? = null,
+    val gateToleranceDeg: Float = 60f
 ) {
     companion object {
         /**
@@ -57,6 +60,11 @@ data class ExerciseConfig(
                         // 60° gap prevents phantom reps
                         downThreshold = 90f,
                         upThreshold = 150f,
+                        gateSegment = if (useLeftSide) {
+                            Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP)
+                        } else {
+                            Pair(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP)
+                        },
                         useLeftSide = useLeftSide
                     )
                 }
@@ -107,6 +115,11 @@ data class ExerciseConfig(
                         angleName = "Body Line",
                         downThreshold = 160f,
                         upThreshold = 180f,
+                        gateSegment = if (useLeftSide) {
+                            Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP)
+                        } else {
+                            Pair(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP)
+                        },
                         useLeftSide = useLeftSide
                     )
                 }

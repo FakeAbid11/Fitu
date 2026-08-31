@@ -101,9 +101,13 @@ class RepCounterTest {
 
     @Test
     fun `pushup - does not count rep on partial movement`() {
+        // Calibrate with a full-depth rep first (adaptive thresholds learn the
+        // 80-170 range), then try a mid-range partial rep (130 deg).
         feed(pushUpCounter, 170f)
-        feed(pushUpCounter, 100f)   // halfway down (dead zone)
-        val counted = feedAndCount(pushUpCounter, 165f)
+        feed(pushUpCounter, 80f)
+        feed(pushUpCounter, 170f)
+
+        val counted = feedAndCount(pushUpCounter, 130f)
 
         assertFalse(counted)
         assertEquals(0, pushUpCounter.repCount)
@@ -184,5 +188,89 @@ class RepCounterTest {
 
         feed(curlCounter, 50f)
         assertEquals("Up", curlCounter.getStateDisplay())
+    }
+
+    // ==================== ACCURACY UPGRADE TESTS ====================
+
+    @Test
+    fun `pushup - median smoothing rejects single-frame spikes`() {
+        feed(pushUpCounter, 170f)   // UP
+        feed(pushUpCounter, 80f)    // DOWN, calibrated (80-170 range)
+
+        // Isolated spike frames must not flip the state via the median filter
+        pushUpCounter.update(170f)
+        pushUpCounter.update(30f)
+        pushUpCounter.update(170f)
+
+        assertEquals(RepCounter.State.DOWN, pushUpCounter.currentState)
+
+        // The real rep still completes cleanly afterwards
+        val counted = feedAndCount(pushUpCounter, 165f)
+        assertTrue(counted)
+        assertEquals(1, pushUpCounter.repCount)
+    }
+
+    @Test
+    fun `pushup - tolerates brief tracking dropouts`() {
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 80f)    // DOWN, calibrated
+
+        // A short detection dropout (below MAX_DROPOUT_FRAMES) coasts
+        repeat(5) { pushUpCounter.update(-1f) }
+
+        val counted = feedAndCount(pushUpCounter, 165f)
+        assertTrue(counted)
+        assertEquals(1, pushUpCounter.repCount)
+    }
+
+    @Test
+    fun `pushup - resets after prolonged tracking loss`() {
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 80f)
+        assertEquals(RepCounter.State.DOWN, pushUpCounter.currentState)
+
+        // Prolonged dropout (at/above MAX_DROPOUT_FRAMES) resets the machine
+        repeat(10) { pushUpCounter.update(-1f) }
+        assertEquals(RepCounter.State.UNKNOWN, pushUpCounter.currentState)
+
+        // And counting restarts cleanly afterwards (no phantom rep)
+        feed(pushUpCounter, 170f)
+        assertEquals(RepCounter.State.UP, pushUpCounter.currentState)
+        assertEquals(0, pushUpCounter.repCount)
+    }
+
+    @Test
+    fun `pushup - adapts thresholds to the user range of motion`() {
+        // User warms up at full extension but never bends past 110 deg
+        // (fixed thresholds 90/160 would count nothing at all)
+        feed(pushUpCounter, 170f)
+        feed(pushUpCounter, 110f)
+
+        val counted = feedAndCount(pushUpCounter, 165f)
+
+        assertTrue(counted)
+        assertEquals(1, pushUpCounter.repCount)
+    }
+
+    @Test
+    fun `pushup - flags reps blocked by minimum interval`() {
+        val slowCounter = RepCounter(
+            downThreshold = 90f,
+            upThreshold = 160f,
+            exerciseType = ExerciseType.PUSH_UP,
+            minRepIntervalOverride = 60000L
+        )
+
+        feed(slowCounter, 170f)
+        feed(slowCounter, 80f)
+        feedAndCount(slowCounter, 170f)  // first rep OK (long ago since last)
+        assertEquals(1, slowCounter.repCount)
+        assertFalse(slowCounter.lastRepWasBlocked)
+
+        // Second rep immediately after is blocked by the min interval
+        feed(slowCounter, 80f)
+        feedAndCount(slowCounter, 170f)
+        assertEquals(1, slowCounter.repCount)
+        assertTrue(slowCounter.lastRepWasBlocked)
     }
 }

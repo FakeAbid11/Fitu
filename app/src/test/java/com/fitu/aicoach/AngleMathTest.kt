@@ -1,6 +1,7 @@
 package com.fitu.aicoach
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -117,5 +118,32 @@ class AngleMathTest {
     fun `calculateAngle with landmarks returns -1 for null landmarks`() {
         val angle = AngleMath.calculateAngle(null, null, null)
         assertEquals(-1f, angle, 0.001f)
+    }
+
+    // ==================== BODY POSITION GATE ====================
+
+    @Test
+    fun `isHorizontalDelta true for horizontal segment`() {
+        assertTrue(AngleMath.isHorizontalDelta(dx = 10f, dy = 0f))
+    }
+
+    @Test
+    fun `isHorizontalDelta false for vertical segment`() {
+        assertFalse(AngleMath.isHorizontalDelta(dx = 0f, dy = 10f))
+    }
+
+    @Test
+    fun `isHorizontalDelta true for 45 degree segment within tolerance`() {
+        assertTrue(AngleMath.isHorizontalDelta(dx = 10f, dy = 10f))
+    }
+
+    @Test
+    fun `isHorizontalDelta false for steep segment beyond tolerance`() {
+        assertFalse(AngleMath.isHorizontalDelta(dx = 1f, dy = 10f))
+    }
+
+    @Test
+    fun `isHorizontalDelta false for zero vector`() {
+        assertFalse(AngleMath.isHorizontalDelta(dx = 0f, dy = 0f))
     }
 }

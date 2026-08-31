@@ -133,9 +133,53 @@ class PoseAnalyzer(
     }
 
     /**
+     * Called when the body-position gate fails (e.g. the user is standing
+     * during a push-up set). Breaks any plank hold / coasts the rep counter
+     * and shows guidance instead of counting phantom reps.
+     */
+    private fun handleBodyPositionGate(pose: Pose, imageWidth: Int, imageHeight: Int, rotationDegrees: Int) {
+        val now = System.currentTimeMillis()
+        if (exerciseConfig.exerciseType.isTimeBased) {
+            plankTracker.update(-1f, now) // break the hold
+        } else {
+            repCounter.update(-1f) // coast (prolonged failure resets the counter)
+        }
+
+        val hint = if (exerciseConfig.exerciseType.isTimeBased) {
+            "Hold plank position - keep your body sideways to the camera"
+        } else {
+            "Get into position - keep your body sideways to the camera"
+        }
+
+        overlay.updatePose(pose, imageWidth, imageHeight, rotationDegrees, isFrontCamera)
+        overlay.updateExerciseInfo(
+            exerciseType = exerciseConfig.exerciseType,
+            angle = -1f,
+            repCount = repCounter.repCount,
+            holdTimeMs = plankTracker.currentHoldTimeMs,
+            formScore = plankTracker.formScore,
+            feedback = hint
+        )
+        onPoseDetected(pose, -1f, exerciseConfig)
+    }
+    /**
      * Process detected pose and update trackers
      */
     private fun processPose(pose: Pose, imageWidth: Int, imageHeight: Int, rotationDegrees: Int) {
+        // Accuracy gate: some exercises are only valid with the body sideways
+        // to the camera (push-up / plank). If the gate fails, pause tracking
+        // and show guidance instead of counting phantom reps.
+        val gateSegment = exerciseConfig.gateSegment
+        if (gateSegment != null &&
+            !AngleMath.isBodyHorizontal(
+                pose.getPoseLandmark(gateSegment.first),
+                pose.getPoseLandmark(gateSegment.second),
+                exerciseConfig.gateToleranceDeg
+            )
+        ) {
+            handleBodyPositionGate(pose, imageWidth, imageHeight, rotationDegrees)
+            return
+        }
         // Get landmarks for current exercise
         val firstLandmark = pose.getPoseLandmark(exerciseConfig.landmarks.first)
         val midLandmark = pose.getPoseLandmark(exerciseConfig.landmarks.second)

@@ -152,4 +152,29 @@ object AngleMath {
                isLandmarkReliable(mid, minConfidence) &&
                isLandmarkReliable(last, minConfidence)
     }
-}
+
+    /**
+     * Check whether the body segment [first]->[second] is roughly horizontal
+     * in the (upright) camera frame. Used as a position gate: push-ups and
+     * planks are only valid when the body is sideways to the camera.
+     *
+     * 0 deg = perfectly horizontal segment, 90 deg = vertical segment.
+     */
+    fun isBodyHorizontal(
+        first: PoseLandmark?,
+        second: PoseLandmark?,
+        toleranceDeg: Float = 60f
+    ): Boolean {
+        val p1 = first?.position ?: return false
+        val p2 = second?.position ?: return false
+        return isHorizontalDelta(p2.x - p1.x, p2.y - p1.y, toleranceDeg)
+    }
+
+    /**
+     * Raw-coordinate variant of [isBodyHorizontal] (unit-test friendly).
+     */
+    fun isHorizontalDelta(dx: Float, dy: Float, toleranceDeg: Float = 60f): Boolean {
+        if (dx == 0f && dy == 0f) return false
+        val deg = Math.toDegrees(abs(atan2(dy.toDouble(), dx.toDouble())))
+        return deg <= toleranceDeg.toDouble()
+    }
