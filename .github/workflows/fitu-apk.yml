@@ -1,9 +1,11 @@
 name: Fitu Build
 
-# Manual build workflow: unit tests run first and gate the build.
+# CI workflow: unit tests run on every push to main (tests only) and gate every build: if tests fail, the workflow fails and no APK is built.
 # If tests fail, the whole workflow fails and no APK is built.
 # Optionally override the app version via the workflow inputs.
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       app_version:
