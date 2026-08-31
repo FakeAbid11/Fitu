@@ -11,7 +11,7 @@ with modern Android development practices.
 ## Features
 
 - **AI Coach** - Real-time rep counting and form feedback using the camera and
-  ML Kit pose detection (push-ups, squats, dumbbell curls, crunches, plank hold
+  MediaPipe pose detection (push-ups, squats, dumbbell curls, crunches, plank hold
   time + form scoring). Anti-phantom-rep engine: angle smoothing, frame
   debouncing, hysteresis and per-exercise minimum rep intervals.
 - **Nutrition** - Snap a photo of your food and Gemini AI estimates calories and
@@ -35,7 +35,7 @@ with modern Android development practices.
 | DI | Hilt |
 | Persistence | Room (schema-exported), DataStore, EncryptedSharedPreferences |
 | AI | Google Gemini (generativeai SDK) |
-| Vision | ML Kit Pose Detection (accurate) + CameraX |
+| Vision | MediaPipe Pose Landmarker (Full, 3D world landmarks) + CameraX |
 | Architecture | MVVM, StateFlow/Coroutines, layered single-module structure |
 | CI/CD | GitHub Actions (signed APK/AAB releases in the cloud) |
 

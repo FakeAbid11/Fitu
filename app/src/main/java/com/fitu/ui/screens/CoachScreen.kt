@@ -440,6 +440,7 @@ private fun CameraPreviewWithOverlay(
                     // Use nullable reference to allow self-reference in callback
                     var analyzerRef: PoseAnalyzer? = null
                     val analyzer = PoseAnalyzer(
+                        context = ctx,
                         overlay = overlay,
                         onPoseDetected = { pose, angle, config ->
                             analyzerRef?.let { a ->

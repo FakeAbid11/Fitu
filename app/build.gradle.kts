@@ -69,6 +69,10 @@ android {
         jvmTarget = "1.8"
     }
 
+    androidResources {
+        noCompress += "task"
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -128,8 +132,8 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // ML Kit (accurate model only; it bundles the pose API itself)
-    implementation(libs.mlkit.pose.detection.accurate)
+    // MediaPipe Tasks (pose landmarker, replaces deprecated ML Kit pose)
+    implementation(libs.mediapipe.vision)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)

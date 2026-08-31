@@ -1,42 +1,44 @@
 package com.fitu.aicoach
 
-import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.pose.Pose
-import com.google.mlkit.vision.pose.PoseDetection
-import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.accurate.AccuratePoseDetectorOptions
+import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.framework.image.MPImage
+import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
+import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 
 /**
- * Camera image analyzer that runs ML Kit Pose Detection on each frame.
- * 
- * Uses the ACCURATE pose detector for better accuracy at the cost of slightly
- * higher latency. STREAM_MODE is used for real-time analysis.
- * 
- * @param overlay The PoseOverlay implementation to update with pose data
- * @param onPoseDetected Callback with the detected pose and current exercise config
+ * Camera image analyzer that runs MediaPipe Pose Landmarker on each frame.
+ *
+ * Replaces the deprecated ML Kit pose detection with the actively maintained
+ * MediaPipe Tasks solution:
+ *  - pose_landmarker_full bundle (better accuracy than ML Kit accurate)
+ *  - true 3D world landmarks (GHUM) exposed for camera-invariant angles
+ *  - GPU delegate with automatic CPU fallback
+ *  - LIVE_STREAM async mode for real-time analysis
+ *
+ * Frames are converted to upright pixel space before callbacks, so the
+ * overlay receives rotation-corrected coordinates and only needs to handle
+ * front-camera mirroring.
  */
 class PoseAnalyzer(
+    private val context: Context,
     private val overlay: PoseOverlay,
-    private val onPoseDetected: (Pose?, Float, ExerciseConfig) -> Unit
+    private val onPoseDetected: (CoachPose, Float, ExerciseConfig) -> Unit
 ) : ImageAnalysis.Analyzer {
 
     companion object {
         private const val TAG = "PoseAnalyzer"
+        private const val MODEL_ASSET = "pose_landmarker_full.task"
     }
 
     // Current exercise configuration
     private var exerciseConfig: ExerciseConfig = ExerciseConfig.forExercise(ExerciseType.PUSH_UP)
-
-    // Pose detector with accurate model for better accuracy
-    private val poseDetector: PoseDetector = PoseDetection.getClient(
-        AccuratePoseDetectorOptions.Builder()
-            .setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE)
-            .build()
-    )
 
     // Rep counter for rep-based exercises
     private var repCounter: RepCounter = RepCounter.forExercise(exerciseConfig)
@@ -46,6 +48,47 @@ class PoseAnalyzer(
 
     // Front camera flag
     private var isFrontCamera: Boolean = true
+
+    // Metadata of the frame currently being processed (captured before close())
+    private var pendingFrameWidth: Int = 1
+    private var pendingFrameHeight: Int = 1
+    private var pendingRotationDegrees: Int = 0
+
+    private val landmarker: PoseLandmarker = buildLandmarker(context)
+
+    private fun buildLandmarker(context: Context): PoseLandmarker {
+        return try {
+            createLandmarker(context, useGpu = true)
+        } catch (e: Exception) {
+            Log.e(TAG, "GPU landmarker init failed, falling back to CPU", e)
+            createLandmarker(context, useGpu = false)
+        }
+    }
+
+    private fun createLandmarker(context: Context, useGpu: Boolean): PoseLandmarker {
+        val baseOptions = BaseOptions.builder()
+            .setModelAssetPath(MODEL_ASSET)
+            .setDelegate(if (useGpu) BaseOptions.Delegate.GPU else BaseOptions.Delegate.CPU)
+            .build()
+
+        val options = PoseLandmarkerOptions.builder()
+            .setBaseOptions(baseOptions)
+            .setRunningMode(RunningMode.LIVE_STREAM)
+            .setNumPoses(1)
+            .setMinPoseDetectionConfidence(0.5f)
+            .setMinPosePresenceConfidence(0.5f)
+            .setMinTrackingConfidence(0.5f)
+            .setResultListener { result, image ->
+                onLandmarkerResult(result, image)
+            }
+            .setErrorListener { error ->
+                Log.e(TAG, "MediaPipe pose landmarker error", error)
+                overlay.clear()
+            }
+            .build()
+
+        return PoseLandmarker.createFromOptions(context, options)
+    }
 
     /**
      * Set the current exercise to track
@@ -72,121 +115,129 @@ class PoseAnalyzer(
     }
 
     /**
-     * Get current rep count
-     */
-    fun getRepCount(): Int = repCounter.repCount
-
-    /**
-     * Get current hold time (for plank)
-     */
-    fun getHoldTimeMs(): Long = plankTracker.currentHoldTimeMs
-
-    /**
-     * Get best hold time (for plank)
-     */
-    fun getBestHoldTimeMs(): Long = plankTracker.bestHoldTimeMs
-
-    /**
-     * Get form score (for plank)
-     */
-    fun getFormScore(): Float = plankTracker.formScore
-
-    /**
      * Analyze each camera frame for pose detection.
-     * 
-     * Processing pipeline:
-     * 1. Create InputImage from camera frame
-     * 2. Run ML Kit pose detection
-     * 3. Calculate angle from relevant landmarks
-     * 4. Update rep counter or plank tracker
-     * 5. Update overlay with pose and exercise info
      */
-    @SuppressLint("UnsafeOptInUsageError")
     override fun analyze(imageProxy: ImageProxy) {
-        val mediaImage = imageProxy.image
-        if (mediaImage == null) {
+        val bitmap = imageProxy.toBitmapSafe()
+        if (bitmap == null) {
             imageProxy.close()
             return
         }
 
-        val inputImage = InputImage.fromMediaImage(
-            mediaImage,
-            imageProxy.imageInfo.rotationDegrees
-        )
+        // Capture frame metadata before closing the proxy
+        pendingFrameWidth = imageProxy.width
+        pendingFrameHeight = imageProxy.height
+        pendingRotationDegrees = imageProxy.imageInfo.rotationDegrees
 
-        val imageWidth = imageProxy.width
-        val imageHeight = imageProxy.height
-        val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+        val mpImage: MPImage = BitmapImageBuilder(bitmap).build()
+        val timestampMs = imageProxy.imageInfo.timestampMillis
 
-        poseDetector.process(inputImage)
-            .addOnSuccessListener { pose ->
-                processPose(pose, imageWidth, imageHeight, rotationDegrees)
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Pose detection failed", e)
-                overlay.clear()
-            }
-            .addOnCompleteListener {
-                // Important: Close the image to allow next frame
-                imageProxy.close()
-            }
+        // The bitmap is a copy, the proxy can be closed immediately
+        imageProxy.close()
+
+        try {
+            landmarker.detectAsync(mpImage, timestampMs)
+        } catch (e: Exception) {
+            Log.e(TAG, "detectAsync failed", e)
+        }
+    }
+
+    private fun imageProxy.toBitmapSafe(): Bitmap? {
+        return try {
+            toBitmap()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to convert frame to bitmap", e)
+            null
+        }
     }
 
     /**
-     * Called when the body-position gate fails (e.g. the user is standing
-     * during a push-up set). Breaks any plank hold / coasts the rep counter
-     * and shows guidance instead of counting phantom reps.
+     * Called by MediaPipe (LIVE_STREAM) when a result is ready.
      */
-    private fun handleBodyPositionGate(pose: Pose, imageWidth: Int, imageHeight: Int, rotationDegrees: Int) {
-        val now = System.currentTimeMillis()
-        if (exerciseConfig.exerciseType.isTimeBased) {
-            plankTracker.update(-1f, now) // break the hold
-        } else {
-            repCounter.update(-1f) // coast (prolonged failure resets the counter)
+    private fun onLandmarkerResult(result: PoseLandmarkerResult) {
+        val normalized = result.landmarks().firstOrNull()
+        if (normalized == null || normalized.isEmpty()) {
+            overlay.clear()
+            return
         }
 
-        val hint = if (exerciseConfig.exerciseType.isTimeBased) {
-            "Hold plank position - keep your body sideways to the camera"
+        val world = result.worldLandmarks().firstOrNull().orEmpty()
+
+        // Build the pose in upright pixel space (rotation-corrected)
+        val uprightWidth: Int
+        val uprightHeight: Int
+        if (pendingRotationDegrees == 90 || pendingRotationDegrees == 270) {
+            uprightWidth = pendingFrameHeight
+            uprightHeight = pendingFrameWidth
         } else {
-            "Get into position - keep your body sideways to the camera"
+            uprightWidth = pendingFrameWidth
+            uprightHeight = pendingFrameHeight
         }
 
-        overlay.updatePose(pose, imageWidth, imageHeight, rotationDegrees, isFrontCamera)
-        overlay.updateExerciseInfo(
-            exerciseType = exerciseConfig.exerciseType,
-            angle = -1f,
-            repCount = repCounter.repCount,
-            holdTimeMs = plankTracker.currentHoldTimeMs,
-            formScore = plankTracker.formScore,
-            feedback = hint
+        val landmarks = normalized.map { lm ->
+            val rotated = rotateNormalizedPoint(lm.x(), lm.y(), pendingRotationDegrees)
+            CoachLandmark(
+                x = rotated.first * uprightWidth,
+                y = rotated.second * uprightHeight,
+                z = lm.z(),
+                visibility = lm.visibility()
+            )
+        }
+        val worldLandmarks = world.map { wl ->
+            CoachLandmark(x = wl.x(), y = wl.y(), z = wl.z(), visibility = 1f)
+        }
+
+        val pose = CoachPose(
+            landmarks = landmarks,
+            width = uprightWidth,
+            height = uprightHeight,
+            worldLandmarks = worldLandmarks
         )
-        onPoseDetected(pose, -1f, exerciseConfig)
+
+        processPose(pose)
     }
+
     /**
-     * Process detected pose and update trackers
+     * Rotate a normalized point so that it is expressed in the upright frame.
      */
-    private fun processPose(pose: Pose, imageWidth: Int, imageHeight: Int, rotationDegrees: Int) {
+    private fun rotateNormalizedPoint(nx: Float, ny: Float, rotationDegrees: Int): Pair<Float, Float> {
+        return if (rotationDegrees == 90) {
+            Pair(1f - ny, nx)
+        } else if (rotationDegrees == 270) {
+            Pair(ny, 1f - nx)
+        } else if (rotationDegrees == 180) {
+            Pair(1f - nx, 1f - ny)
+        } else {
+            Pair(nx, ny)
+        }
+    }
+
+    /**
+     * Process detected pose and update trackers + overlay.
+     */
+    private fun processPose(pose: CoachPose) {
+        val pixelPose = pose.scaledToPixels()
+
         // Accuracy gate: some exercises are only valid with the body sideways
         // to the camera (push-up / plank). If the gate fails, pause tracking
         // and show guidance instead of counting phantom reps.
         val gateSegment = exerciseConfig.gateSegment
         if (gateSegment != null &&
             !AngleMath.isBodyHorizontal(
-                pose.getPoseLandmark(gateSegment.first),
-                pose.getPoseLandmark(gateSegment.second),
+                pixelPose.landmark(gateSegment.first),
+                pixelPose.landmark(gateSegment.second),
                 exerciseConfig.gateToleranceDeg
             )
         ) {
-            handleBodyPositionGate(pose, imageWidth, imageHeight, rotationDegrees)
+            handleBodyPositionGate(pixelPose)
             return
         }
-        // Get landmarks for current exercise
-        val firstLandmark = pose.getPoseLandmark(exerciseConfig.landmarks.first)
-        val midLandmark = pose.getPoseLandmark(exerciseConfig.landmarks.second)
-        val lastLandmark = pose.getPoseLandmark(exerciseConfig.landmarks.third)
+
+        val firstLandmark = pixelPose.landmark(exerciseConfig.landmarks.first)
+        val midLandmark = pixelPose.landmark(exerciseConfig.landmarks.second)
+        val lastLandmark = pixelPose.landmark(exerciseConfig.landmarks.third)
 
         // Calculate angle only if landmarks are reliable (50%+ confidence)
-        // This filters out noisy detections from camera shake
         val angle = if (AngleMath.areLandmarksReliable(firstLandmark, midLandmark, lastLandmark)) {
             AngleMath.calculateAngle(firstLandmark, midLandmark, lastLandmark)
         } else {
@@ -209,12 +260,12 @@ class PoseAnalyzer(
             }
         }
 
-        // Update overlay with pose
+        // Update overlay with pose (pixel space, upright frame)
         overlay.updatePose(
-            pose = pose,
-            imageWidth = imageWidth,
-            imageHeight = imageHeight,
-            rotationDegrees = rotationDegrees,
+            pose = pixelPose,
+            imageWidth = pixelPose.width,
+            imageHeight = pixelPose.height,
+            rotationDegrees = 0,
             isFrontCamera = isFrontCamera
         )
 
@@ -233,9 +284,46 @@ class PoseAnalyzer(
     }
 
     /**
+     * Called when the body-position gate fails (e.g. the user is standing
+     * during a push-up set). Breaks any plank hold / coasts the rep counter
+     * and shows guidance instead of counting phantom reps.
+     */
+    private fun handleBodyPositionGate(pixelPose: CoachPose) {
+        val now = System.currentTimeMillis()
+        if (exerciseConfig.exerciseType.isTimeBased) {
+            plankTracker.update(-1f, now) // break the hold
+        } else {
+            repCounter.update(-1f) // coast (prolonged failure resets the counter)
+        }
+
+        val hint = if (exerciseConfig.exerciseType.isTimeBased) {
+            "Hold plank position - keep your body sideways to the camera"
+        } else {
+            "Get into position - keep your body sideways to the camera"
+        }
+
+        overlay.updatePose(
+            pose = pixelPose,
+            imageWidth = pixelPose.width,
+            imageHeight = pixelPose.height,
+            rotationDegrees = 0,
+            isFrontCamera = isFrontCamera
+        )
+        overlay.updateExerciseInfo(
+            exerciseType = exerciseConfig.exerciseType,
+            angle = -1f,
+            repCount = repCounter.repCount,
+            holdTimeMs = plankTracker.currentHoldTimeMs,
+            formScore = plankTracker.formScore,
+            feedback = hint
+        )
+        onPoseDetected(pixelPose, -1f, exerciseConfig)
+    }
+
+    /**
      * Release resources when done
      */
     fun close() {
-        poseDetector.close()
+        landmarker.close()
     }
 }

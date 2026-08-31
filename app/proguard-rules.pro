@@ -14,9 +14,9 @@
 -keepclassmembers class com.google.ai.client.generativeai.** { *; }
 -dontwarn com.google.ai.client.generativeai.**
 
-# ========== ML Kit ==========
--keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**
+# ========== MediaPipe Tasks ==========
+-keep class com.google.mediapipe.** { *; }
+-dontwarn com.google.mediapipe.**
 
 # ========== Room ==========
 -keep class * extends androidx.room.RoomDatabase

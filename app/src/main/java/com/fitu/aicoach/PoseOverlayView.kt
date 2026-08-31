@@ -7,18 +7,18 @@ import android.graphics.Paint
 import android.graphics.PointF
 import android.util.AttributeSet
 import android.view.View
-import com.google.mlkit.vision.pose.Pose
-import com.google.mlkit.vision.pose.PoseLandmark
 
 /**
  * Custom View that draws pose skeleton overlay on top of camera preview.
- * 
+ *
  * Handles:
- * - Coordinate mapping from image space to view space
- * - Rotation handling (0°, 90°, 180°, 270°)
+ * - Coordinate mapping from pixel space to view space
  * - Front camera mirroring
  * - Skeleton drawing with joints and connections
- * - Exercise information display (reps, timer, form score)
+ * - Exercise information display (feedback text)
+ *
+ * The pose arrives already rotation-corrected in upright pixel space
+ * (see PoseAnalyzer), so no rotation handling is needed here.
  */
 class PoseOverlayView @JvmOverloads constructor(
     context: Context,
@@ -27,10 +27,9 @@ class PoseOverlayView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr), PoseOverlay {
 
     // Current pose data
-    private var currentPose: Pose? = null
+    private var currentPose: CoachPose? = null
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
-    private var rotationDegrees: Int = 0
     private var isFrontCamera: Boolean = true
 
     // Exercise info
@@ -86,35 +85,35 @@ class PoseOverlayView @JvmOverloads constructor(
         setShadowLayer(6f, 3f, 3f, Color.BLACK)
     }
 
-    // Skeleton connections (pairs of landmark types)
+    // Skeleton connections (pairs of landmark indices)
     private val skeletonConnections = listOf(
         // Face
-        Pair(PoseLandmark.LEFT_EAR, PoseLandmark.LEFT_EYE),
-        Pair(PoseLandmark.LEFT_EYE, PoseLandmark.NOSE),
-        Pair(PoseLandmark.NOSE, PoseLandmark.RIGHT_EYE),
-        Pair(PoseLandmark.RIGHT_EYE, PoseLandmark.RIGHT_EAR),
-        
+        Pair(LandmarkIndex.LEFT_EAR, LandmarkIndex.LEFT_EYE),
+        Pair(LandmarkIndex.LEFT_EYE, LandmarkIndex.NOSE),
+        Pair(LandmarkIndex.NOSE, LandmarkIndex.RIGHT_EYE),
+        Pair(LandmarkIndex.RIGHT_EYE, LandmarkIndex.RIGHT_EAR),
+
         // Upper body
-        Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER),
-        Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW),
-        Pair(PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST),
-        Pair(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW),
-        Pair(PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST),
-        
+        Pair(LandmarkIndex.LEFT_SHOULDER, LandmarkIndex.RIGHT_SHOULDER),
+        Pair(LandmarkIndex.LEFT_SHOULDER, LandmarkIndex.LEFT_ELBOW),
+        Pair(LandmarkIndex.LEFT_ELBOW, LandmarkIndex.LEFT_WRIST),
+        Pair(LandmarkIndex.RIGHT_SHOULDER, LandmarkIndex.RIGHT_ELBOW),
+        Pair(LandmarkIndex.RIGHT_ELBOW, LandmarkIndex.RIGHT_WRIST),
+
         // Torso
-        Pair(PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP),
-        Pair(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP),
-        Pair(PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP),
-        
+        Pair(LandmarkIndex.LEFT_SHOULDER, LandmarkIndex.LEFT_HIP),
+        Pair(LandmarkIndex.RIGHT_SHOULDER, LandmarkIndex.RIGHT_HIP),
+        Pair(LandmarkIndex.LEFT_HIP, LandmarkIndex.RIGHT_HIP),
+
         // Lower body
-        Pair(PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE),
-        Pair(PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_ANKLE),
-        Pair(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE),
-        Pair(PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE)
+        Pair(LandmarkIndex.LEFT_HIP, LandmarkIndex.LEFT_KNEE),
+        Pair(LandmarkIndex.LEFT_KNEE, LandmarkIndex.LEFT_ANKLE),
+        Pair(LandmarkIndex.RIGHT_HIP, LandmarkIndex.RIGHT_KNEE),
+        Pair(LandmarkIndex.RIGHT_KNEE, LandmarkIndex.RIGHT_ANKLE)
     )
 
     override fun updatePose(
-        pose: Pose?,
+        pose: CoachPose?,
         imageWidth: Int,
         imageHeight: Int,
         rotationDegrees: Int,
@@ -123,9 +122,8 @@ class PoseOverlayView @JvmOverloads constructor(
         this.currentPose = pose
         this.imageWidth = imageWidth
         this.imageHeight = imageHeight
-        this.rotationDegrees = rotationDegrees
         this.isFrontCamera = isFrontCamera
-        
+
         // Request redraw on UI thread
         postInvalidate()
     }
@@ -144,7 +142,7 @@ class PoseOverlayView @JvmOverloads constructor(
         this.currentHoldTimeMs = holdTimeMs
         this.currentFormScore = formScore
         this.currentFeedback = feedback
-        
+
         postInvalidate()
     }
 
@@ -168,9 +166,7 @@ class PoseOverlayView @JvmOverloads constructor(
     /**
      * Draw the skeleton (joints and bones)
      */
-    private fun drawSkeleton(canvas: Canvas, pose: Pose) {
-        val landmarks = pose.allPoseLandmarks
-        
+    private fun drawSkeleton(canvas: Canvas, pose: CoachPose) {
         // Get the config for current exercise to highlight relevant bones
         val config = ExerciseConfig.forExercise(currentExerciseType)
         val highlightedLandmarks = setOf(
@@ -181,16 +177,16 @@ class PoseOverlayView @JvmOverloads constructor(
 
         // Draw bones (connections)
         for (connection in skeletonConnections) {
-            val startLandmark = pose.getPoseLandmark(connection.first)
-            val endLandmark = pose.getPoseLandmark(connection.second)
+            val startLandmark = pose.landmark(connection.first)
+            val endLandmark = pose.landmark(connection.second)
 
             if (startLandmark != null && endLandmark != null) {
-                val startPoint = translatePoint(startLandmark.position.x, startLandmark.position.y)
-                val endPoint = translatePoint(endLandmark.position.x, endLandmark.position.y)
+                val startPoint = translatePoint(startLandmark.x, startLandmark.y)
+                val endPoint = translatePoint(endLandmark.x, endLandmark.y)
 
                 // Use highlight paint for tracked limbs
-                val isHighlighted = connection.first in highlightedLandmarks && 
-                                   connection.second in highlightedLandmarks
+                val isHighlighted = connection.first in highlightedLandmarks &&
+                                    connection.second in highlightedLandmarks
                 val paint = if (isHighlighted) highlightBonePaint else bonePaint
 
                 canvas.drawLine(
@@ -202,24 +198,25 @@ class PoseOverlayView @JvmOverloads constructor(
         }
 
         // Draw joints
-        for (landmark in landmarks) {
-            if (landmark.inFrameLikelihood > 0.5f) {
-                val point = translatePoint(landmark.position.x, landmark.position.y)
-                
+        for (i in pose.landmarks.indices) {
+            val landmark = pose.landmarks[i]
+            if (0.5f < landmark.visibility) {
+                val point = translatePoint(landmark.x, landmark.y)
+
                 // Larger joint for tracked landmarks
-                val isTracked = landmark.landmarkType in highlightedLandmarks
+                val isTracked = i in highlightedLandmarks
                 val radius = if (isTracked) 16f else 10f
-                
+
                 canvas.drawCircle(point.x, point.y, radius, jointPaint)
             }
         }
 
         // Draw angle at the mid joint
-        val midLandmark = pose.getPoseLandmark(config.landmarks.second)
-        if (midLandmark != null && currentAngle > 0) {
-            val point = translatePoint(midLandmark.position.x, midLandmark.position.y)
+        val midLandmark = pose.landmark(config.landmarks.second)
+        if (midLandmark != null && 0 < currentAngle) {
+            val point = translatePoint(midLandmark.x, midLandmark.y)
             canvas.drawText(
-                "${currentAngle.toInt()}°",
+                "${currentAngle.toInt()}deg",
                 point.x,
                 point.y - 30f,
                 angleTextPaint
@@ -232,7 +229,7 @@ class PoseOverlayView @JvmOverloads constructor(
      */
     private fun drawExerciseInfo(canvas: Canvas) {
         val centerX = width / 2f
-        
+
         // Draw exercise name at top
         canvas.drawText(
             "${currentExerciseType.emoji} ${currentExerciseType.displayName}",
@@ -249,71 +246,47 @@ class PoseOverlayView @JvmOverloads constructor(
             canvas.drawText(
                 currentFeedback,
                 centerX,
-                height - 300f, // Moved up significantly (was -50f)
+                height - 300f,
                 feedbackPaint
             )
         }
     }
 
     /**
-     * Translate a point from image coordinates to view coordinates.
-     * 
-     * Key insight: ML Kit pose detection returns coordinates based on the 
-     * ROTATED image dimensions. When rotation is 90° or 270°, the image
-     * width and height are swapped in the coordinate system.
-     * 
+     * Translate a point from pixel coordinates to view coordinates.
+     *
      * For front camera with FILL_CENTER PreviewView:
      * 1. The preview is mirrored horizontally by PreviewView
      * 2. We need to match that mirroring in our overlay
      * 3. Scale to fill the view while maintaining aspect ratio
      */
     private fun translatePoint(x: Float, y: Float): PointF {
-        // After rotation, determine the effective dimensions
-        // ML Kit returns coordinates in the rotated frame
-        val isRotated = rotationDegrees == 90 || rotationDegrees == 270
-        val effectiveWidth = if (isRotated) imageHeight.toFloat() else imageWidth.toFloat()
-        val effectiveHeight = if (isRotated) imageWidth.toFloat() else imageHeight.toFloat()
-        
-        // Map coordinates based on rotation
-        // ML Kit handles rotation internally via InputImage.fromMediaImage, so the
-        // coordinates returned in the Pose object are ALREADY relative to the upright/rotated image.
-        // We do NOT need to manually swap X/Y axes here.
         var mappedX = x
         var mappedY = y
-        
+
         // For front camera: mirror horizontally to match PreviewView
         // PreviewView shows a mirrored image, so we need to flip X
         if (isFrontCamera) {
-            mappedX = effectiveWidth - mappedX
+            mappedX = imageWidth - mappedX
         }
-        
+
         // Calculate scale to fill the view (FILL_CENTER behavior)
-        val scaleX = width.toFloat() / effectiveWidth
-        val scaleY = height.toFloat() / effectiveHeight
+        val scaleX = width.toFloat() / imageWidth.toFloat()
+        val scaleY = height.toFloat() / imageHeight.toFloat()
         val scale = maxOf(scaleX, scaleY)  // Use max for FILL (crop if needed)
-        
+
         // Calculate the scaled dimensions
-        val scaledWidth = effectiveWidth * scale
-        val scaledHeight = effectiveHeight * scale
-        
+        val scaledWidth = imageWidth * scale
+        val scaledHeight = imageHeight * scale
+
         // Calculate offset to center the scaled image
         val offsetX = (width - scaledWidth) / 2f
         val offsetY = (height - scaledHeight) / 2f
-        
+
         // Apply scale and offset
         val finalX = mappedX * scale + offsetX
         val finalY = mappedY * scale + offsetY
-        
-        return PointF(finalX, finalY)
-    }
 
-    /**
-     * Format milliseconds to MM:SS string
-     */
-    private fun formatTime(ms: Long): String {
-        val totalSeconds = ms / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return String.format("%02d:%02d", minutes, seconds)
+        return PointF(finalX, finalY)
     }
 }
