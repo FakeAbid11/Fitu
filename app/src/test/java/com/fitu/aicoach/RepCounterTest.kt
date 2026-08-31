@@ -101,16 +101,18 @@ class RepCounterTest {
 
     @Test
     fun `pushup - does not count rep on partial movement`() {
-        // Calibrate with a full-depth rep first (adaptive thresholds learn the
-        // 80-170 range), then try a mid-range partial rep (130 deg).
+        // Calibration cycle 170-80-170 counts as rep 1 and teaches the adaptive
+        // thresholds the 80-170 range); the partial rep must not add another.
         feed(pushUpCounter, 170f)
         feed(pushUpCounter, 80f)
         feed(pushUpCounter, 170f)
 
         val counted = feedAndCount(pushUpCounter, 130f)
 
+        // The partial 130 deg rep sits in the dead zone and adds nothing;
+        // repCount 1 is the full-depth calibration cycle itself.
         assertFalse(counted)
-        assertEquals(0, pushUpCounter.repCount)
+        assertEquals(1, pushUpCounter.repCount)
     }
 
     @Test

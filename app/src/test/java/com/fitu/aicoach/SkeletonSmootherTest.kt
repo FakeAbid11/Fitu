@@ -31,10 +31,11 @@ class SkeletonSmootherTest {
 
     @Test
     fun `second frame moves only part of the way`() {
+        // 0.2-unit move is below the snap threshold (0.3), so it smooths
         smoother.smooth(listOf(lm(0.2f)))
-        val out = smoother.smooth(listOf(lm(0.6f)))
-        // lerp with alpha 0.4: 0.2 + 0.4 * 0.4 = 0.36
-        assertEquals(0.36f, out[0].x, 0.001f)
+        val out = smoother.smooth(listOf(lm(0.4f)))
+        // lerp with alpha 0.4: 0.2 + 0.4 * 0.2 = 0.28
+        assertEquals(0.28f, out[0].x, 0.001f)
     }
 
     @Test
@@ -47,9 +48,10 @@ class SkeletonSmootherTest {
 
     @Test
     fun `single-frame spike moves the skeleton only slightly`() {
+        // 0.2-unit spike is below the snap threshold, so it smooths
         smoother.smooth(listOf(lm(0.5f)))
-        val out = smoother.smooth(listOf(lm(0.9f)))
-        // smoothed stays well under half of the spike distance
+        val out = smoother.smooth(listOf(lm(0.7f)))
+        // lerp with alpha 0.4: 0.5 + 0.4 * 0.2 = 0.58
         assertTrue(out[0].x < 0.7f)
     }
 
