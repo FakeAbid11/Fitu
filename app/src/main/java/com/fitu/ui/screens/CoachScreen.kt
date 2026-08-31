@@ -71,7 +71,6 @@ fun CoachScreen(
     val isWorkoutActive by viewModel.isWorkoutActive.collectAsState()
     val caloriesBurned by viewModel.caloriesBurned.collectAsState()
     val workoutSaved by viewModel.workoutSaved.collectAsState()
-    val isWorkoutActive by viewModel.isWorkoutActive.collectAsState()
 
     // Pose analyzer reference (to update exercise and reset)
     var poseAnalyzer by remember { mutableStateOf<PoseAnalyzer?>(null) }

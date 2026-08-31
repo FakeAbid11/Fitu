@@ -8,8 +8,10 @@ import androidx.camera.core.ImageProxy
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
+import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerOptions
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 
 /**
@@ -68,7 +70,7 @@ class PoseAnalyzer(
     private fun createLandmarker(context: Context, useGpu: Boolean): PoseLandmarker {
         val baseOptions = BaseOptions.builder()
             .setModelAssetPath(MODEL_ASSET)
-            .setDelegate(if (useGpu) BaseOptions.Delegate.GPU else BaseOptions.Delegate.CPU)
+            .setDelegate(if (useGpu) Delegate.GPU else Delegate.CPU)
             .build()
 
         val options = PoseLandmarkerOptions.builder()
@@ -78,8 +80,8 @@ class PoseAnalyzer(
             .setMinPoseDetectionConfidence(0.5f)
             .setMinPosePresenceConfidence(0.5f)
             .setMinTrackingConfidence(0.5f)
-            .setResultListener { result, image ->
-                onLandmarkerResult(result, image)
+            .setResultListener { result, _ ->
+                onLandmarkerResult(result)
             }
             .setErrorListener { error ->
                 Log.e(TAG, "MediaPipe pose landmarker error", error)
@@ -114,6 +116,14 @@ class PoseAnalyzer(
         plankTracker.reset()
     }
 
+    fun getRepCount(): Int = repCounter.repCount
+
+    fun getHoldTimeMs(): Long = plankTracker.currentHoldTimeMs
+
+    fun getBestHoldTimeMs(): Long = plankTracker.bestHoldTimeMs
+
+    fun getFormScore(): Float = plankTracker.formScore
+
     /**
      * Analyze each camera frame for pose detection.
      */
@@ -130,7 +140,8 @@ class PoseAnalyzer(
         pendingRotationDegrees = imageProxy.imageInfo.rotationDegrees
 
         val mpImage: MPImage = BitmapImageBuilder(bitmap).build()
-        val timestampMs = imageProxy.imageInfo.timestampMillis
+        // CameraX timestamps are nanoseconds; MediaPipe expects milliseconds
+        val timestampMs = imageProxy.imageInfo.timestamp / 1_000_000
 
         // The bitmap is a copy, the proxy can be closed immediately
         imageProxy.close()
@@ -142,7 +153,7 @@ class PoseAnalyzer(
         }
     }
 
-    private fun imageProxy.toBitmapSafe(): Bitmap? {
+    private fun ImageProxy.toBitmapSafe(): Bitmap? {
         return try {
             toBitmap()
         } catch (e: Exception) {
@@ -180,7 +191,7 @@ class PoseAnalyzer(
                 x = rotated.first * uprightWidth,
                 y = rotated.second * uprightHeight,
                 z = lm.z(),
-                visibility = lm.visibility()
+                visibility = lm.visibility().orElse(1f)
             )
         }
         val worldLandmarks = world.map { wl ->
