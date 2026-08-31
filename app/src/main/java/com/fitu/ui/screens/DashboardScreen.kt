@@ -391,7 +391,6 @@ fun DashboardScreen(
             }
         }
     }
-}
         }
     }
 }
