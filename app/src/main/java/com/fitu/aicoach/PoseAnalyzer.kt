@@ -11,7 +11,6 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
-import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerOptions
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 
 /**
@@ -73,7 +72,7 @@ class PoseAnalyzer(
             .setDelegate(if (useGpu) Delegate.GPU else Delegate.CPU)
             .build()
 
-        val options = PoseLandmarkerOptions.builder()
+        val options = PoseLandmarker.PoseLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(RunningMode.LIVE_STREAM)
             .setNumPoses(1)
