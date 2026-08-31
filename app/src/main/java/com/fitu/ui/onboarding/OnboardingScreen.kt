@@ -3,6 +3,12 @@ package com.fitu.ui.onboarding
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,7 +70,23 @@ fun OnboardingScreen(
         ProgressBar(currentPage = currentPage, pageCount = 2)
         Spacer(modifier = Modifier.height(32.dp))
 
-        AnimatedContent(targetState = currentPage, label = "page") { page ->
+        // Direction-aware page transition: next slides left, back slides right
+        AnimatedContent(
+            targetState = currentPage,
+            transitionSpec = {
+                val forward = targetState > initialState
+                val slideIn = slideInHorizontally(
+                    initialOffsetX = { if (forward) it else -it },
+                    animationSpec = tween(280)
+                ) + fadeIn(tween(280))
+                val slideOut = slideOutHorizontally(
+                    targetOffsetX = { if (forward) -it / 3 else it / 3 },
+                    animationSpec = tween(280)
+                ) + fadeOut(tween(280))
+                slideIn togetherWith slideOut
+            },
+            label = "page"
+        ) { page ->
             when (page) {
                 0 -> PersonalInfoPage(viewModel)
                 1 -> ApiSetupPage(viewModel, onComplete)

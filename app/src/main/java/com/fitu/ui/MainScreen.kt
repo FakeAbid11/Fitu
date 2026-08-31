@@ -9,7 +9,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -218,11 +224,32 @@ fun MainScreen(
                                 if (isCoach) {
                                     Spacer(modifier = Modifier.width(56.dp))
                                 } else {
+                                    // Press bounce + animated selection pill + tint
+                                    val interactionSource = remember { MutableInteractionSource() }
+                                    val pressed by interactionSource.collectIsPressedAsState()
+                                    val pressScale by animateFloatAsState(
+                                        targetValue = if (pressed) 0.85f else 1f,
+                                        animationSpec = spring(stiffness = 600f),
+                                        label = "navPress"
+                                    )
+                                    val selection by animateFloatAsState(
+                                        targetValue = if (selected) 1f else 0f,
+                                        animationSpec = tween(200),
+                                        label = "navSelect"
+                                    )
+                                    val iconTint by animateColorAsState(
+                                        targetValue = if (selected) OrangePrimary
+                                        else Color.White.copy(alpha = 0.5f),
+                                        label = "navTint"
+                                    )
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(12.dp))
-                                            .clickable {
+                                            .clickable(
+                                                interactionSource = interactionSource,
+                                                indication = null
+                                            ) {
                                                 navController.navigate(screen.route) {
                                                     popUpTo(navController.graph.findStartDestination().id) {
                                                         saveState = true
@@ -232,12 +259,15 @@ fun MainScreen(
                                                 }
                                             }
                                             .padding(horizontal = 12.dp, vertical = 8.dp)
+                                            .graphicsLayer {
+                                                scaleX = pressScale
+                                                scaleY = pressScale
+                                            }
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .background(
-                                                    if (selected) OrangePrimary.copy(alpha = 0.2f)
-                                                    else Color.Transparent,
+                                                    OrangePrimary.copy(alpha = 0.2f * selection),
                                                     RoundedCornerShape(10.dp)
                                                 )
                                                 .padding(8.dp)
@@ -245,16 +275,20 @@ fun MainScreen(
                                             Icon(
                                                 imageVector = screen.icon,
                                                 contentDescription = screen.label,
-                                                tint = if (selected) OrangePrimary
-                                                else Color.White.copy(alpha = 0.5f),
-                                                modifier = Modifier.size(24.dp)
+                                                tint = iconTint,
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .graphicsLayer {
+                                                        val grow = 1f + 0.15f * selection
+                                                        scaleX = grow
+                                                        scaleY = grow
+                                                    }
                                             )
                                         }
                                         Text(
                                             text = screen.label,
                                             fontSize = 10.sp,
-                                            color = if (selected) Color.White
-                                            else Color.White.copy(alpha = 0.5f),
+                                            color = iconTint,
                                             fontWeight = if (selected) FontWeight.Bold
                                             else FontWeight.Normal
                                         )
@@ -265,15 +299,29 @@ fun MainScreen(
                     }
 
                     // Floating Coach FAB (Center)
+                    val fabInteraction = remember { MutableInteractionSource() }
+                    val fabPressed by fabInteraction.collectIsPressedAsState()
+                    val fabScale by animateFloatAsState(
+                        targetValue = if (fabPressed) 0.88f else 1f,
+                        animationSpec = spring(stiffness = 600f),
+                        label = "fabScale"
+                    )
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .offset(y = (-20).dp)
                             .size(64.dp)
+                            .graphicsLayer {
+                                scaleX = fabScale
+                                scaleY = fabScale
+                            }
                             .background(OrangePrimary, CircleShape)
                             .border(4.dp, Color(0xFF0A0A0F), CircleShape)
                             .clip(CircleShape)
-                            .clickable {
+                            .clickable(
+                                interactionSource = fabInteraction,
+                                indication = null
+                            ) {
                                 navController.navigate(Screen.Coach.route) {
                                     popUpTo(navController.graph.findStartDestination().id) {
                                         saveState = true

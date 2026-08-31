@@ -19,6 +19,7 @@ import com.fitu.ui.screens.GeneratorScreen
 import com.fitu.ui.screens.NutritionScreen
 import com.fitu.ui.screens.ProfileScreen
 import com.fitu.ui.screens.StepsScreen
+import com.fitu.ui.components.PageTransitions
 import com.fitu.ui.splash.SplashScreen
 
 sealed class Screen(val route: String) {
@@ -36,25 +37,6 @@ sealed class Screen(val route: String) {
 private const val POPUP_DURATION = 200
 private const val FADE_DURATION = 150
 
-/**
- * Fast popup enter - scale up with fade
- */
-private fun popupEnter(): EnterTransition {
-    return scaleIn(
-        initialScale = 0.85f,
-        animationSpec = tween(POPUP_DURATION, easing = FastOutSlowInEasing)
-    ) + fadeIn(animationSpec = tween(FADE_DURATION))
-}
-
-/**
- * Fast popup exit - scale down with fade
- */
-private fun popupExit(): ExitTransition {
-    return scaleOut(
-        targetScale = 0.85f,
-        animationSpec = tween(POPUP_DURATION, easing = FastOutSlowInEasing)
-    ) + fadeOut(animationSpec = tween(FADE_DURATION))
-}
 
 /**
  * Simple fade in (for splash/onboarding)
@@ -70,6 +52,43 @@ private fun fadeOutOnly(): ExitTransition {
     return fadeOut(animationSpec = tween(FADE_DURATION))
 }
 
+private fun routeOrder(route: String?): Int = when (route) {
+    Screen.Splash.route -> 0
+    Screen.Onboarding.route -> 1
+    Screen.Dashboard.route -> 2
+    Screen.Steps.route -> 3
+    Screen.Nutrition.route -> 4
+    Screen.Coach.route -> 5
+    Screen.Generator.route -> 6
+    Screen.Profile.route -> 7
+    else -> 99
+}
+
+private fun isFadedRoute(route: String?): Boolean =
+    route == Screen.Splash.route || route == Screen.Onboarding.route
+
+// Forward = navigating toward a later destination in the tab order
+private fun isForward(initialRoute: String?, targetRoute: String?): Boolean =
+    routeOrder(targetRoute) >= routeOrder(initialRoute)
+
+private fun enterFor(initialRoute: String?, targetRoute: String?): EnterTransition =
+    if (isFadedRoute(initialRoute) || isFadedRoute(targetRoute)) {
+        fadeInOnly()
+    } else if (isForward(initialRoute, targetRoute)) {
+        PageTransitions.slideInRight(220)
+    } else {
+        PageTransitions.slideInLeft(220)
+    }
+
+private fun exitFor(initialRoute: String?, targetRoute: String?): ExitTransition =
+    if (isFadedRoute(initialRoute) || isFadedRoute(targetRoute)) {
+        fadeOutOnly()
+    } else if (isForward(initialRoute, targetRoute)) {
+        PageTransitions.slideOutLeft(220)
+    } else {
+        PageTransitions.slideOutRight(220)
+    }
+
 @Composable
 fun NavGraph(
     navController: NavHostController,
@@ -78,11 +97,13 @@ fun NavGraph(
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        // Default fast popup transitions for all screens
-        enterTransition = { popupEnter() },
-        exitTransition = { popupExit() },
-        popEnterTransition = { popupEnter() },
-        popExitTransition = { popupExit() }
+        // Direction-aware transitions: forward navigation slides content in
+        // from the right, going back slides it in from the left. Splash and
+        // onboarding keep a simple fade.
+        enterTransition = { enterFor(initialState.destination.route, targetState.destination.route) },
+        exitTransition = { exitFor(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { enterFor(initialState.destination.route, targetState.destination.route) },
+        popExitTransition = { exitFor(initialState.destination.route, targetState.destination.route) }
     ) {
         // Splash Screen - Fade only
         composable(
@@ -117,10 +138,6 @@ fun NavGraph(
         // Dashboard - Fast popup (no navigation parameters needed)
         composable(
             route = Screen.Dashboard.route,
-            enterTransition = { popupEnter() },
-            exitTransition = { popupExit() },
-            popEnterTransition = { popupEnter() },
-            popExitTransition = { popupExit() }
         ) {
             DashboardScreen()
         }
@@ -128,10 +145,6 @@ fun NavGraph(
         // Steps Screen - Fast popup
         composable(
             route = Screen.Steps.route,
-            enterTransition = { popupEnter() },
-            exitTransition = { popupExit() },
-            popEnterTransition = { popupEnter() },
-            popExitTransition = { popupExit() }
         ) {
             StepsScreen()
         }
@@ -139,10 +152,6 @@ fun NavGraph(
         // Nutrition Screen - Fast popup
         composable(
             route = Screen.Nutrition.route,
-            enterTransition = { popupEnter() },
-            exitTransition = { popupExit() },
-            popEnterTransition = { popupEnter() },
-            popExitTransition = { popupExit() }
         ) {
             NutritionScreen()
         }
@@ -150,10 +159,6 @@ fun NavGraph(
         // Coach Screen - Fast popup
         composable(
             route = Screen.Coach.route,
-            enterTransition = { popupEnter() },
-            exitTransition = { popupExit() },
-            popEnterTransition = { popupEnter() },
-            popExitTransition = { popupExit() }
         ) {
             CoachScreen()
         }
@@ -161,10 +166,6 @@ fun NavGraph(
         // Generator Screen - Fast popup
         composable(
             route = Screen.Generator.route,
-            enterTransition = { popupEnter() },
-            exitTransition = { popupExit() },
-            popEnterTransition = { popupEnter() },
-            popExitTransition = { popupExit() }
         ) {
             GeneratorScreen()
         }
@@ -172,10 +173,6 @@ fun NavGraph(
         // Profile Screen - Fast popup
         composable(
             route = Screen.Profile.route,
-            enterTransition = { popupEnter() },
-            exitTransition = { popupExit() },
-            popEnterTransition = { popupEnter() },
-            popExitTransition = { popupExit() }
         ) {
             ProfileScreen()
         }

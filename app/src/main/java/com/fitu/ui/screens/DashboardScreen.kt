@@ -1,5 +1,6 @@
 package com.fitu.ui.screens
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -30,6 +31,7 @@ import com.fitu.ui.components.GlassCard
 import com.fitu.ui.components.GoalCelebrationDialog
 import com.fitu.ui.components.GoalType
 import com.fitu.ui.components.PullToRefreshContainer
+import com.fitu.ui.components.StaggeredEntrance
 import com.fitu.ui.components.StreakCounterCard
 import com.fitu.ui.components.skeletons.DashboardSkeleton
 import com.fitu.ui.dashboard.DashboardViewModel
@@ -90,11 +92,14 @@ fun DashboardScreen(
         onDismiss = { viewModel.dismissStepGoalCelebration() }
     )
 
-    if (!isStepsInitialized) {
-        DashboardSkeleton()
-        return
-    }
-
+    Crossfade(
+        targetState = isStepsInitialized,
+        animationSpec = tween(350),
+        label = "dashboardContent"
+    ) { initialized ->
+        if (!initialized) {
+            DashboardSkeleton()
+        } else {
     PullToRefreshContainer(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.refresh() }
@@ -143,14 +148,17 @@ fun DashboardScreen(
 
             // Streak Card
             if (streakData.currentStreak > 0 || streakData.longestStreak > 0) {
+                StaggeredEntrance(index = 0) {
                 StreakCounterCard(
                     currentStreak = streakData.currentStreak,
                     longestStreak = streakData.longestStreak
                 )
+                }
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
             // Steps Card with circular progress
+            StaggeredEntrance(index = 1) {
             GlassCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -221,6 +229,8 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -379,6 +389,9 @@ fun DashboardScreen(
                     }
                 }
             }
+        }
+    }
+}
         }
     }
 }

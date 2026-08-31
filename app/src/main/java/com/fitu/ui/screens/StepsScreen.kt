@@ -5,7 +5,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -742,7 +744,12 @@ private fun WeeklyChartContent(
         ) {
             weeklySteps.forEach { dayData: DaySteps ->
                 val steps = if (dayData.isToday) currentSteps else dayData.steps
-                val barHeight = if (maxSteps > 0) (steps.toFloat() / maxSteps * 80).dp else 4.dp
+                val targetBarHeight = if (maxSteps > 0) (steps.toFloat() / maxSteps * 80).dp else 4.dp
+                val barHeight by animateDpAsState(
+                    targetValue = targetBarHeight,
+                    animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
+                    label = "barHeight"
+                )
                 Box(
                     modifier = Modifier
                         .width(24.dp)
