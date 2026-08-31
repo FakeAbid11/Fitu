@@ -170,7 +170,7 @@ fun MainScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = if (showBottomBar) 110.dp else 24.dp)
+                    .padding(bottom = (if (showBottomBar) 110.dp else 24.dp) + innerPadding.calculateBottomPadding())
                     .zIndex(Float.MAX_VALUE)
             )
 
@@ -180,7 +180,7 @@ fun MainScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 16.dp)
-                        .padding(bottom = 24.dp)
+                        .padding(bottom = 24.dp + innerPadding.calculateBottomPadding())
                 ) {
                     // Blurred glass background
                     Box(
@@ -410,7 +410,7 @@ private fun GlobalSuccessSnackbar(
             )
             IconButton(
                 onClick = onDismiss,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     Icons.Default.Close,
@@ -475,7 +475,7 @@ private fun GlobalErrorSnackbar(
             }
             IconButton(
                 onClick = onDismiss,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     Icons.Default.Close,

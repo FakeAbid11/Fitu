@@ -773,7 +773,7 @@ private fun ApiKeyDialog(
                             IconButton(onClick = { showKey = !showKey }) {
                                 Icon(
                                     if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = null,
+                                    contentDescription = if (showKey) "Hide API key" else "Show API key",
                                     tint = Color.White.copy(alpha = 0.5f),
                                     modifier = Modifier.size(20.dp)
                                 )

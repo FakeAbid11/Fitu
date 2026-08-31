@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -177,7 +179,12 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Box(
-                        modifier = Modifier.size(180.dp),
+                        modifier = Modifier
+                            .size(180.dp)
+                            .semantics {
+                                contentDescription =
+                                    "Step progress: $currentSteps of $dailyStepGoal steps"
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {

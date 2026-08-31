@@ -3,6 +3,7 @@ package com.fitu.ui.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.util.Log
+import android.widget.Toast
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,6 +71,7 @@ fun CoachScreen(
     val isWorkoutActive by viewModel.isWorkoutActive.collectAsState()
     val caloriesBurned by viewModel.caloriesBurned.collectAsState()
     val workoutSaved by viewModel.workoutSaved.collectAsState()
+    val isWorkoutActive by viewModel.isWorkoutActive.collectAsState()
 
     // Pose analyzer reference (to update exercise and reset)
     var poseAnalyzer by remember { mutableStateOf<PoseAnalyzer?>(null) }
@@ -96,6 +98,13 @@ fun CoachScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         viewModel.setCameraPermission(granted)
+    }
+
+    // Confirm workout save (Finish button or auto-save on exit)
+    LaunchedEffect(workoutSaved) {
+        if (workoutSaved) {
+            Toast.makeText(context, "Workout saved", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // Update analyzer when exercise changes
@@ -211,10 +220,14 @@ fun CoachScreen(
                         poseAnalyzer = analyzer
                     },
                     onStatsUpdate = { reps, holdMs, bestMs, score, angle ->
-                        viewModel.updateRepCount(reps)
-                        viewModel.updateHoldTime(holdMs, bestMs)
-                        viewModel.updateFormScore(score)
-                        viewModel.updateAngle(angle)
+                        // Only count while a workout is active - positioning the
+                        // phone before pressing Start must not produce reps.
+                        if (isWorkoutActive) {
+                            viewModel.updateRepCount(reps)
+                            viewModel.updateHoldTime(holdMs, bestMs)
+                            viewModel.updateFormScore(score)
+                            viewModel.updateAngle(angle)
+                        }
                     }
                 )
 
@@ -230,7 +243,46 @@ fun CoachScreen(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
-        }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Workout controls: explicit start/finish so the coach never counts
+            // reps while the phone is being positioned.
+            if (!isWorkoutActive) {
+                Button(
+                    onClick = {
+                        viewModel.startWorkout()
+                        poseAnalyzer?.reset()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = if (repCount != 0 || holdTimeMs != 0L) "Start New Set" else "Start Workout",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Button(
+                    onClick = { viewModel.stopWorkout() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = "Finish Workout",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }        }
     }
 }
 
