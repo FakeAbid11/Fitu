@@ -11,7 +11,7 @@ with modern Android development practices.
 ## Features
 
 - **AI Coach** - Real-time rep counting and form feedback using the camera and
-  MediaPipe pose detection (push-ups, squats, dumbbell curls, crunches, plank hold
+  MediaPipe pose detection (push-ups, squats, jumping jacks, dumbbell curls, crunches, plank hold
   time + form scoring). Anti-phantom-rep engine: angle smoothing, frame
   debouncing, hysteresis and per-exercise minimum rep intervals.
 - **Nutrition** - Snap a photo of your food and Gemini AI estimates calories and

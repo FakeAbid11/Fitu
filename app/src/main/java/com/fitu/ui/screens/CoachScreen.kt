@@ -456,6 +456,13 @@ private fun CameraPreviewWithOverlay(
                         analyzerRef = it
                         it.setExercise(selectedExercise)
                         it.setFrontCamera(true)
+                        if (!it.isReady) {
+                            Toast.makeText(
+                                ctx,
+                                it.initError ?: "Pose engine failed to start",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                         onAnalyzerCreated(it)
                     }
 

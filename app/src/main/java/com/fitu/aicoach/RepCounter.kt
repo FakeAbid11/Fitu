@@ -44,6 +44,7 @@ class RepCounter(
 
         private fun getMinRepInterval(exerciseType: ExerciseType): Long {
             val interval = if (exerciseType == ExerciseType.CRUNCH) 400L
+            else if (exerciseType == ExerciseType.JUMPING_JACKS) 500L
             else if (exerciseType == ExerciseType.DUMBBELL_CURL) 450L
             else if (exerciseType == ExerciseType.PUSH_UP) 600L
             else if (exerciseType == ExerciseType.SQUAT) 700L

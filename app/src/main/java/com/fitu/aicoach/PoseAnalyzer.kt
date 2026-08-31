@@ -55,14 +55,31 @@ class PoseAnalyzer(
     private var pendingFrameHeight: Int = 1
     private var pendingRotationDegrees: Int = 0
 
-    private val landmarker: PoseLandmarker = buildLandmarker(context)
+    // Null when initialization failed on both delegates. The coach UI then
+    // runs without pose detection instead of crashing the whole app.
+    private var landmarker: PoseLandmarker? = null
 
-    private fun buildLandmarker(context: Context): PoseLandmarker {
-        return try {
-            createLandmarker(context, useGpu = true)
+    /** True when the landmarker was created successfully. */
+    var isReady: Boolean = false
+        private set
+
+    /** Human-readable reason when [isReady] is false. */
+    var initError: String? = null
+        private set
+
+    init {
+        try {
+            landmarker = createLandmarker(context, useGpu = true)
+            isReady = true
         } catch (e: Exception) {
-            Log.e(TAG, "GPU landmarker init failed, falling back to CPU", e)
-            createLandmarker(context, useGpu = false)
+            Log.e(TAG, "GPU landmarker init failed, trying CPU", e)
+            try {
+                landmarker = createLandmarker(context, useGpu = false)
+                isReady = true
+            } catch (e2: Exception) {
+                Log.e(TAG, "CPU landmarker init failed; pose detection unavailable", e2)
+                initError = "Pose engine failed to start on this device"
+            }
         }
     }
 
@@ -127,6 +144,12 @@ class PoseAnalyzer(
      * Analyze each camera frame for pose detection.
      */
     override fun analyze(imageProxy: ImageProxy) {
+        val lm = landmarker
+        if (lm == null) {
+            imageProxy.close()
+            return
+        }
+
         val bitmap = imageProxy.toBitmapSafe()
         if (bitmap == null) {
             imageProxy.close()
@@ -146,7 +169,7 @@ class PoseAnalyzer(
         imageProxy.close()
 
         try {
-            landmarker.detectAsync(mpImage, timestampMs)
+            lm.detectAsync(mpImage, timestampMs)
         } catch (e: Exception) {
             Log.e(TAG, "detectAsync failed", e)
         }
@@ -347,6 +370,8 @@ class PoseAnalyzer(
      * Release resources when done
      */
     fun close() {
-        landmarker.close()
+        landmarker?.close()
+        landmarker = null
+        isReady = false
     }
 }

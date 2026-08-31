@@ -275,4 +275,23 @@ class RepCounterTest {
         assertEquals(1, slowCounter.repCount)
         assertTrue(slowCounter.lastRepWasBlocked)
     }
+
+    // ==================== JUMPING JACKS (INVERTED, ARMS OVERHEAD) ====================
+
+    @Test
+    fun `jumping jacks - counts a rep when arms go overhead and back down`() {
+        val jacksCounter = RepCounter(
+            downThreshold = 150f,
+            upThreshold = 60f,
+            exerciseType = ExerciseType.JUMPING_JACKS,
+            minRepIntervalOverride = 0L
+        )
+
+        feed(jacksCounter, 170f)   // arms at sides (DOWN: extended)
+        feed(jacksCounter, 40f)    // arms overhead (UP: raised)
+        val counted = feedAndCount(jacksCounter, 165f)
+
+        assertTrue(counted)
+        assertEquals(1, jacksCounter.repCount)
+    }
 }

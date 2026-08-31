@@ -53,6 +53,13 @@ enum class ExerciseType(
         emoji = "🔥",
         caloriesPerRep = 0.15f,   // ~0.1-0.2 kcal per crunch
         caloriesPerMinute = 0f
+    ),
+    JUMPING_JACKS(
+        displayName = "Jumping Jacks",
+        isTimeBased = false,
+        emoji = "🤸",
+        caloriesPerRep = 0.25f,   // ~0.2-0.3 kcal per jumping jack
+        caloriesPerMinute = 0f
     );
 
     companion object {

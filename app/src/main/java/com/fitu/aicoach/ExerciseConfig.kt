@@ -174,6 +174,34 @@ data class ExerciseConfig(
                         useLeftSide = useLeftSide
                     )
                 }
+                ExerciseType.JUMPING_JACKS -> {
+                    // Shoulder angle: Hip, Shoulder, Wrist
+                    // Down: arms at sides (angle near 180)
+                    // Up: arms overhead (small angle)
+                    // Note: INVERTED logic like curls
+                    ExerciseConfig(
+                        exerciseType = type,
+                        landmarks = if (useLeftSide) {
+                            Triple(
+                                LandmarkIndex.LEFT_HIP,
+                                LandmarkIndex.LEFT_SHOULDER,
+                                LandmarkIndex.LEFT_WRIST
+                            )
+                        } else {
+                            Triple(
+                                LandmarkIndex.RIGHT_HIP,
+                                LandmarkIndex.RIGHT_SHOULDER,
+                                LandmarkIndex.RIGHT_WRIST
+                            )
+                        },
+                        angleName = "Shoulder",
+                        // Jacks: arms down (extended) and arms overhead (raised)
+                        // 90 deg gap prevents phantom reps
+                        downThreshold = 150f,
+                        upThreshold = 60f,
+                        useLeftSide = useLeftSide
+                    )
+                }
             }
         }
     }
